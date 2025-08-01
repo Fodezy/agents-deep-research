@@ -64,8 +64,7 @@ GUIDELINES:
 - Format the final output and references section as markdown
 - Do not include a title for the reference section, just a list of numbered references
 
-Only output JSON. Follow the JSON schema below. Do not output anything else. I will be parsing this with Pydantic so output valid JSON only:
-{LongWriterOutput.model_json_schema()}
+Only output JSON. Return your final report in a structured format.
 """
 
 def init_long_writer_agent(config: LLMConfig) -> ResearchAgent:

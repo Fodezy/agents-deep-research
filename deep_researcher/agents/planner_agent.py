@@ -16,8 +16,6 @@ from pydantic import BaseModel, Field
 from typing import List
 from .baseclass import ResearchAgent
 from ..llm_config import LLMConfig, model_supports_structured_output
-from .tool_agents.crawl_agent import init_crawl_agent
-from .tool_agents.search_agent import init_search_agent
 from .utils.parse_output import create_type_parser
 from datetime import datetime
 
@@ -33,7 +31,6 @@ class ReportPlan(BaseModel):
     background_context: str = Field(description="A summary of supporting context that can be passed onto the research agents")
     report_outline: List[ReportPlanSection] = Field(description="List of sections that need to be written in the report")
     report_title: str = Field(description="The title of the report")
-
 
 INSTRUCTIONS = f"""
 You are a research manager, managing a team of research agents. Today's date is {datetime.now().strftime("%Y-%m-%d")}.
@@ -58,28 +55,15 @@ Guidelines:
 - For example, if the query is about a company, the background context should include some basic information about what the company does
 - DO NOT do more than 2 tool calls
 
-Only output JSON. Follow the JSON schema below. Do not output anything else. I will be parsing this with Pydantic so output valid JSON only:
-{ReportPlan.model_json_schema()}
+Only output JSON. Return a report plan with sections containing titles and key questions for research.
 """
 
 def init_planner_agent(config: LLMConfig) -> ResearchAgent:
     selected_model = config.reasoning_model
-    search_agent = init_search_agent(config)
-    crawl_agent = init_crawl_agent(config)
 
     return ResearchAgent(
-            name="PlannerAgent",
-            instructions=INSTRUCTIONS,
-        tools=[
-            search_agent.as_tool(
-                tool_name="web_search",
-                tool_description="Use this tool to search the web for information relevant to the query - provide a query with 3-6 words as input"
-            ),
-            crawl_agent.as_tool(
-                tool_name="crawl_website",
-                tool_description="Use this tool to crawl a website for information relevant to the query - provide a starting URL as input"
-            )
-        ],
+        name="PlannerAgent",
+        instructions=INSTRUCTIONS,
         model=selected_model,
         output_type=ReportPlan if model_supports_structured_output(selected_model) else None,
         output_parser=create_type_parser(ReportPlan) if not model_supports_structured_output(selected_model) else None

@@ -1,3 +1,6 @@
+from agents import set_tracing_disabled
+set_tracing_disabled(True)
+
 from typing import Union
 
 from agents import (
@@ -36,7 +39,7 @@ FAST_MODEL_PROVIDER = get_env_with_prefix("FAST_MODEL_PROVIDER", "openai")
 FAST_MODEL = get_env_with_prefix("FAST_MODEL", "gpt-4o-mini")
 
 SEARCH_PROVIDER = get_env_with_prefix("SEARCH_PROVIDER", "serper")
-SEARCHXNG_HOST = get_env_with_prefix("SEARCHXNG_HOST")
+SEARXNG_HOST    = get_env_with_prefix("SEARXNG_HOST")
 
 supported_providers = [
     "openai",
@@ -96,8 +99,10 @@ provider_mapping = {
     "local": {
         "client": AsyncOpenAI,
         "model": OpenAIChatCompletionsModel,
+        # override the OpenAI SDK endpoint
         "base_url": LOCAL_MODEL_URL,
-        "api_key": "ollama",  # Required by OpenAI client but not used
+        # don’t send a (cloud) API key
+        "api_key": "",
     },
     "azureopenai": {
         "client": AsyncAzureOpenAI,
@@ -115,7 +120,7 @@ else:
     # If no OpenAI API key is provided, disable tracing
     set_tracing_disabled(True)
 
-supported_search_providers = ["serper", "searchxng", "openai"]
+supported_search_providers = ["serper", "searxng", "openai"]
 
 
 class LLMConfig:
@@ -134,6 +139,9 @@ class LLMConfig:
             raise ValueError(f"Invalid search provider: {search_provider}")
 
         self.search_provider = search_provider
+        if search_provider == "searxng":
+            # stash the URL so your search‐agent can pick it up
+            self.searxng_host = SEARXNG_HOST  # from the top‐level constant you just corrected
 
         if reasoning_model_provider not in supported_providers:
             raise ValueError(f"Invalid model provider: {reasoning_model_provider}")

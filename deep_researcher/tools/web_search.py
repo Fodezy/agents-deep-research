@@ -45,25 +45,14 @@ def create_web_search_tool(config: LLMConfig) -> function_tool:
 
     if config.search_provider == "serper":
         search_client = SerperClient(filter_agent)
-    elif config.search_provider == "searchxng":
-        search_client = SearchXNGClient(filter_agent)
+    elif config.search_provider == "searxng":
+        search_client = SearchXNGClient(filter_agent, config.searxng_host)
     else:
         raise ValueError(f"Invalid search provider: {config.search_provider}")
 
     @function_tool
     async def web_search(query: str) -> Union[List[ScrapeResult], str]:
-        """Perform a web search for a given query and get back the URLs along with their titles, descriptions and text contents.
-
-        Args:
-            query: The search query
-
-        Returns:
-            List of ScrapeResult objects which have the following fields:
-                - url: The URL of the search result
-                - title: The title of the search result
-                - description: The description of the search result
-                - text: The full text content of the search result
-        """
+        """Perform a web search for a given query and return scraped results."""
         try:
             search_results = await search_client.search(
                 query, filter_for_relevance=True, max_results=5
@@ -71,10 +60,12 @@ def create_web_search_tool(config: LLMConfig) -> function_tool:
             results = await scrape_urls(search_results)
             return results
         except Exception as e:
-            # Return a user-friendly error message
-            return f"Sorry, I encountered an error while searching: {str(e)}"
+            return f"Sorry, I encountered an error while searching: {e!s}"
 
+    # **Ensure the FunctionTool instance has a __name__**
+    web_search.__name__ = "web_search"
     return web_search
+
 
 
 # ------- DEFINE AGENT FOR FILTERING SEARCH RESULTS BY RELEVANCE -------
@@ -86,8 +77,12 @@ to the original query based on the link, title and snippet. Return only the rele
 - Remove any results that refer to entities that have similar names to the queried entity, but are not the same.
 - E.g. if the query asks about a company "Amce Inc, acme.com", remove results with "acmesolutions.com" or "acme.net" in the link.
 
-Only output JSON. Follow the JSON schema below. Do not output anything else. I will be parsing this with Pydantic so output valid JSON only:
-{SearchResults.model_json_schema()}
+Only output JSON in this exact format:
+{{
+  "results_list": [
+    {{"url": "...", "title": "...", "description": "..."}}
+  ]
+}}
 """
 
 
@@ -199,9 +194,9 @@ class SerperClient:
 class SearchXNGClient:
     """A client for the SearchXNG API to perform Google searches."""
 
-    def __init__(self, filter_agent: ResearchAgent):
+    def __init__(self, filter_agent: ResearchAgent, host: str):
         self.filter_agent = filter_agent
-        self.host = os.getenv("SEARCHXNG_HOST")
+        self.host = host
         if not self.host.endswith("/search"):
             self.host = (
                 f"{self.host}/search"
@@ -215,22 +210,30 @@ class SearchXNGClient:
         """Perform a search using SearchXNG API."""
         connector = aiohttp.TCPConnector(ssl=ssl_context)
         async with aiohttp.ClientSession(connector=connector) as session:
-            params = {
-                "q": query,
-                "format": "json",
-            }
-
+            params = {"q": query, "format": "json"}
             async with session.get(self.host, params=params) as response:
                 response.raise_for_status()
-                results = await response.json()
+
+                # --- DEBUG: log raw JSON response ---
+                raw_text = await response.text()
+                print(f"[SearchXNGClient] RAW JSON:\n{raw_text}\n")
+
+                try:
+                    results = json.loads(raw_text)
+                except Exception as e:
+                    print(f"[SearchXNGClient] JSON parse error: {e}")
+                    raise
+
+                hits = results.get("results", [])
+                print(f"[SearchXNGClient] parsed {len(hits)} entries")
 
                 results_list = [
                     WebpageSnippet(
-                        url=result.get("url", ""),
-                        title=result.get("title", ""),
-                        description=result.get("content", ""),
+                        url=item.get("url", ""),
+                        title=item.get("title", ""),
+                        description=item.get("content", ""),
                     )
-                    for result in results.get("results", [])
+                    for item in hits
                 ]
 
         if not results_list:

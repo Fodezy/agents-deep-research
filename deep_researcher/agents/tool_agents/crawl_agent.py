@@ -29,8 +29,7 @@ You are a web craling agent that crawls the contents of a website answers a quer
 * Include citations/URLs in brackets next to all associated information in your summary
 * Only run the crawler once
 
-Only output JSON. Follow the JSON schema below. Do not output anything else. I will be parsing this with Pydantic so output valid JSON only:
-{ToolAgentOutput.model_json_schema()}
+Only output JSON with "output" and "sources" fields containing your research findings.
 """
 
 def init_crawl_agent(config: LLMConfig) -> ResearchAgent:

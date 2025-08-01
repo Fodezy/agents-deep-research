@@ -2,7 +2,7 @@ from __future__ import annotations
 import asyncio
 import time
 from typing import Dict, List, Optional
-from agents import custom_span, gen_trace_id, trace
+# Tracing disabled for local models
 from .agents.baseclass import ResearchRunner
 from .agents.writer_agent import init_writer_agent
 from .agents.knowledge_gap_agent import KnowledgeGapOutput, init_knowledge_gap_agent
@@ -155,11 +155,7 @@ class IterativeResearcher:
         """Run the deep research workflow for a given query."""
         self.start_time = time.time()
 
-        if self.tracing:
-            trace_id = gen_trace_id()
-            workflow_trace = trace("iterative_researcher", trace_id=trace_id)
-            print(f"View trace: https://platform.openai.com/traces/trace?trace_id={trace_id}")
-            workflow_trace.start(mark_as_current=True)
+        # Tracing disabled for local models
 
         self._log_message("=== Starting Iterative Research Workflow ===")
         
@@ -196,8 +192,7 @@ class IterativeResearcher:
         elapsed_time = time.time() - self.start_time
         self._log_message(f"IterativeResearcher completed in {int(elapsed_time // 60)} minutes and {int(elapsed_time % 60)} seconds after {self.iteration} iterations.")
         
-        if self.tracing:
-            workflow_trace.finish(reset_current=True)
+        # Tracing disabled
 
         return report
     
@@ -292,28 +287,28 @@ class IterativeResearcher:
     
     async def _execute_tools(self, tasks: List[AgentTask]) -> Dict[str, ToolAgentOutput]:
         """Execute the selected tools concurrently to gather information."""
-        with custom_span("Execute Tool Agents"):
-            # Create a task for each agent
-            async_tasks = []
-            for task in tasks:
-                async_tasks.append(self._run_agent_task(task))
-            
-            # Run all tasks concurrently
-            num_completed = 0
-            results = {}
-            for future in asyncio.as_completed(async_tasks):
-                gap, agent_name, result = await future
-                results[f"{agent_name}_{gap}"] = result
-                num_completed += 1
-                self._log_message(f"<processing>\nTool execution progress: {num_completed}/{len(async_tasks)}\n</processing>")
+        # Execute Tool Agents
+        # Create a task for each agent
+        async_tasks = []
+        for task in tasks:
+            async_tasks.append(self._run_agent_task(task))
+        
+        # Run all tasks concurrently
+        num_completed = 0
+        results = {}
+        for future in asyncio.as_completed(async_tasks):
+            gap, agent_name, result = await future
+            results[f"{agent_name}_{gap}"] = result
+            num_completed += 1
+            self._log_message(f"<processing>\nTool execution progress: {num_completed}/{len(async_tasks)}\n</processing>")
 
-            # Add findings from the tool outputs to the conversation
-            findings = []
-            for tool_output in results.values():
-                findings.append(tool_output.output)
-            self.conversation.set_latest_findings(findings)
+        # Add findings from the tool outputs to the conversation
+        findings = []
+        for tool_output in results.values():
+            findings.append(tool_output.output)
+        self.conversation.set_latest_findings(findings)
 
-            return results
+        return results
     
     async def _run_agent_task(self, task: AgentTask) -> tuple[str, str, ToolAgentOutput]:
         """Run a single agent task and return the result."""

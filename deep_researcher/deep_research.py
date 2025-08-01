@@ -6,7 +6,7 @@ from .agents.proofreader_agent import ReportDraftSection, ReportDraft, init_proo
 from .agents.long_writer_agent import init_long_writer_agent, write_report
 from .agents.baseclass import ResearchRunner
 from typing import List, Optional
-from agents.tracing import trace, gen_trace_id, custom_span
+# Tracing disabled for local models
 from .llm_config import LLMConfig, create_default_config
 
 
@@ -35,11 +35,7 @@ class DeepResearcher:
         """Run the deep research workflow"""
         start_time = time.time()
 
-        if self.tracing:
-            trace_id = gen_trace_id()
-            workflow_trace = trace("deep_researcher", trace_id=trace_id)
-            print(f"View trace: https://platform.openai.com/traces/trace?trace_id={trace_id}")
-            workflow_trace.start(mark_as_current=True)
+        # Tracing disabled for local models
 
         # First build the report plan which outlines the sections and compiles any relevant background context on the query
         report_plan: ReportPlan = await self._build_report_plan(query)
@@ -53,16 +49,13 @@ class DeepResearcher:
         elapsed_time = time.time() - start_time
         self._log_message(f"DeepResearcher completed in {int(elapsed_time // 60)} minutes and {int(elapsed_time % 60)} seconds")
 
-        if self.tracing:
-            workflow_trace.finish(reset_current=True)
+        # Tracing disabled
 
         return final_report
 
     async def _build_report_plan(self, query: str) -> ReportPlan:
         """Build the initial report plan including the report outline (sections and key questions) and background context"""
-        if self.tracing:
-            span = custom_span(name="build_report_plan")
-            span.start(mark_as_current=True)
+        # Tracing disabled for local models
 
         self._log_message("=== Building Report Plan ===")
         user_message = f"QUERY: {query}"
@@ -81,8 +74,7 @@ class DeepResearcher:
                 message_log += "\n\nNo background context was provided for the report build.\n"
             self._log_message(f"Report plan created with {num_sections} sections:\n{message_log}")
 
-        if self.tracing:
-            span.finish(reset_current=True)
+        # Tracing disabled
 
         return report_plan
 
@@ -106,15 +98,8 @@ class DeepResearcher:
                 "background_context": report_plan.background_context,
             }
             
-            # Only use custom span if tracing is enabled
-            if self.tracing:
-                with custom_span(
-                    name=f"iterative_researcher:{section.title}", 
-                    data={"key_question": section.key_question}
-                ):
-                    return await iterative_researcher.run(**args)
-            else:
-                return await iterative_researcher.run(**args)
+            # Tracing disabled for local models
+            return await iterative_researcher.run(**args)
         
         self._log_message("=== Initializing Research Loops ===")
         # Run all research loops concurrently in a single gather call
@@ -131,9 +116,7 @@ class DeepResearcher:
         use_long_writer: bool = True
     ) -> str:
         """Create the final report from the original report plan and the drafts of each section"""
-        if self.tracing:
-            span = custom_span(name="create_final_report")
-            span.start(mark_as_current=True)
+        # Tracing disabled for local models
 
         # Each section is a string containing the markdown for the section
         # From this we need to build a ReportDraft object to feed to the final proofreader agent
@@ -163,8 +146,7 @@ class DeepResearcher:
 
         self._log_message(f"Final report completed")
 
-        if self.tracing:
-            span.finish(reset_current=True)
+        # Tracing disabled
 
         return final_output
 

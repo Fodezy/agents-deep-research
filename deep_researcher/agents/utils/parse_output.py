@@ -1,87 +1,139 @@
-import json
-from pydantic import BaseModel
-from typing import Any, Callable
-
+import json, re
+from typing import Any, Callable, List, Dict
+from pydantic import BaseModel, ValidationError
 
 class OutputParserError(Exception):
-    """
-    Exception raised when the output parser fails to parse the output.
-    """
     def __init__(self, message, output=None):
         self.message = message
         self.output = output
         super().__init__(self.message)
-        
     def __str__(self):
         if self.output:
             return f"{self.message}\nProblematic output: {self.output}"
         return self.message
 
+def find_all_json_in_string(string: str) -> List[str]:
+    code_block_pattern = r'```(?:json)?\s*(.*?)```'
+    code_blocks = re.findall(code_block_pattern, string, re.DOTALL)
+    candidates = [string] + code_blocks
+    results: List[str] = []
+    for s in candidates:
+        depth = 0
+        start = None
+        for i, ch in enumerate(s):
+            if ch == '{':
+                if depth == 0:
+                    start = i
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0 and start is not None:
+                    blob = s[start : i+1]
+                    if blob not in results:
+                        results.append(blob)
+                    start = None
+    return results
 
-def find_json_in_string(string: str) -> str:
+def create_type_parser(model: type[BaseModel]) -> Callable[[str], BaseModel]:
     """
-    Method to extract all text in the left-most brace that appears in a string.
-    Used to extract JSON from a string (note that this function does not validate the JSON).
-
-    Example:
-        string = "bla bla bla {this is {some} text{{}and it's sneaky}} because {it's} confusing"
-        output = "{this is {some} text{{}and it's sneaky}}"
+    Parses raw LLM output into JSON, normalizes keys, wraps unquoted tokens in quotes,
+    and validates with Pydantic.
     """
-    stack = 0
-    start_index = None
+    def parser(raw: str) -> BaseModel:
+        last_err = None
 
-    for i, c in enumerate(string):
-        if c == '{':
-            if stack == 0:
-                start_index = i  # Start index of the first '{'
-            stack += 1  # Push to stack
-        elif c == '}':
-            stack -= 1  # Pop stack
-            if stack == 0:
-                # Return the substring from the start of the first '{' to the current '}'
-                return string[start_index:i + 1] if start_index is not None else ""
+        for blob in find_all_json_in_string(raw):
+            # 1) Attempt to parse JSON directly
+            try:
+                data = json.loads(blob)
+            except json.JSONDecodeError as e:
+                # 1a) Fix stray asterisks on keys
+                fixed_blob = re.sub(r'\*(\w+)":', r'"\1":', blob)
+                # 1b) Wrap unquoted string values in quotes
+                unq_pattern = re.compile(
+                    r'("(?P<key>[^"]+)"\s*:\s*)'        # "key":
+                    r'(?!["\d]|true|false|null)'       # not quoted, digit, bool or null
+                    r'(?P<val>[^,\}\n]+)'              # unquoted value
+                )
+                fixed_blob = unq_pattern.sub(
+                    lambda m: f'{m.group(1)}"{m.group("val").strip()}"',
+                    fixed_blob
+                )
+                # 1c) Retry loading JSON
+                try:
+                    data = json.loads(fixed_blob)
+                except json.JSONDecodeError:
+                    last_err = e
+                    continue
 
-    # If no complete set of braces is found, return an empty string
-    return ""
+            # ────────────────────────────────────────────────────────────────────
+            # Wrap bare task lists into the dict the AgentSelectionPlan expects
+            if isinstance(data, list) and "tasks" in model.model_fields:
+                data = {"tasks": data}
+            # ────────────────────────────────────────────────────────────────────
 
+            # —————————————————————————————————————————————————————————
+            # Normalize root keys for PlannerAgent
+            if "title" in data and "report_title" not in data:
+                data["report_title"] = data.pop("title")
 
-def parse_json_output(output: str) -> Any:
-    """Take a string output and parse it as JSON"""
-    # First try to load the string as JSON
-    try:
-        return json.loads(output)
-    except json.JSONDecodeError as e:
-        pass
+            if "outline" in data and "report_outline" not in data:
+                outline = data.pop("outline")
+                if isinstance(outline, dict):
+                    report_outline: List[Dict[str, Any]] = []
+                    for sec_title, details in outline.items():
+                        q = details.get("Key Question") or details.get("key_question") if isinstance(details, dict) else None
+                        report_outline.append({"title": sec_title, "key_question": q})
+                    data["report_outline"] = report_outline
 
-    # If that fails, assume that the output is in a code block - remove the code block markers and try again
-    parsed_output = output
-    parsed_output = parsed_output.split("```")[1]
-    parsed_output = parsed_output.split("```")[0]
-    if parsed_output.startswith("json") or parsed_output.startswith("JSON"):
-        parsed_output = parsed_output[4:].strip()
-    try:
-        return json.loads(parsed_output)
-    except json.JSONDecodeError:
-        pass
+            if "sections" in data and "report_outline" not in data:
+                secs = data.pop("sections")
+                if isinstance(secs, list):
+                    data["report_outline"] = secs
 
-    # As a last attempt, try to manually find the JSON object in the output and parse it
-    parsed_output = find_json_in_string(output)
-    if parsed_output:
-        try:
-            return json.loads(parsed_output)
-        except json.JSONDecodeError:
-            raise OutputParserError(f"Failed to parse output as JSON", output)
+            # **NEW** handle nested planner output
+            if "report_plan" in data and "report_outline" not in data:
+                rp = data.pop("report_plan")
+                sections = rp.get("section_titles_and_questions") or rp.get("report_outline")
+                if isinstance(sections, list):
+                    data["report_outline"] = [
+                        {"title": sec.get("title"), "key_question": sec.get("key_question")}
+                        for sec in sections
+                    ]
 
-    # If all fails, raise an error
-    raise OutputParserError(f"Failed to parse output as JSON", output)
+            # Normalize keys for AgentSelectionPlan
+            if "sections" in data and "tasks" not in data:
+                data["tasks"] = data.pop("sections")
+            # —————————————————————————————————————————————————————————
 
+            # 2) Skip pure JSON-schema blobs
+            if isinstance(data, dict) and all(k in data for k in ("properties", "required", "type")):
+                continue
 
-def create_type_parser(type: BaseModel) -> Callable[[str], BaseModel]:
-    """Create a function that takes a string output and parses it as a specified Pydantic model"""
+            # 3) Try direct Pydantic validation
+            try:
+                return model.model_validate(data)
+            except ValidationError as e:
+                last_err = e
 
-    def convert_json_string_to_type(output: str) -> BaseModel:
-        """Take a string output and parse it as a Pydantic model"""
-        output_dict = parse_json_output(output)
-        return type.model_validate(output_dict)
+            # 4) Unwrap properties envelope
+            if isinstance(data, dict) and "properties" in data:
+                props = data["properties"]
+                if isinstance(props, dict) and not all(isinstance(v, dict) and "type" in v for v in props.values()):
+                    norm = {}
+                    for k, v in props.items():
+                        match = next((f for f in model.model_fields if f.lower() == k.lower()), None)
+                        norm_key = match or k
+                        norm[norm_key] = v
+                    try:
+                        return model.model_validate(norm)
+                    except ValidationError as e:
+                        last_err = e
+                        continue
 
-    return convert_json_string_to_type
+        raise OutputParserError(
+            f"Failed to parse and validate output as {model.__name__}",
+            raw
+        )
+
+    return parser
