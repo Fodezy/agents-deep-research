@@ -184,7 +184,12 @@ def model_supports_structured_output(
     model: Union[OpenAIChatCompletionsModel, OpenAIResponsesModel],
 ) -> bool:
     """Utility function to check if a model supports structured output"""
-    structured_output_providers = ["openai.com", "anthropic.com"]
-    return any(
-        provider in get_base_url(model) for provider in structured_output_providers
-    )
+    # Force all models to use custom output parsing for consistency
+    # This fixes tool execution issues with local models
+    return False
+    
+    # Original logic (disabled for now):
+    # structured_output_providers = ["openai.com", "anthropic.com"]
+    # return any(
+    #     provider in get_base_url(model) for provider in structured_output_providers
+    # )

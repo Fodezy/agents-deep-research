@@ -17,20 +17,22 @@ from ..baseclass import ResearchAgent
 from ..utils.parse_output import create_type_parser
 
 
-INSTRUCTIONS = f"""
-You are a web craling agent that crawls the contents of a website answers a query based on the crawled contents. Follow these steps exactly:
+INSTRUCTIONS = """
+You are the SiteCrawlerAgent. You receive an AgentTask containing:
+- gap: the knowledge gap to fill
+- query: (optional) a short query string
+- entity_website: the URL to start crawling
 
-* From the provided information, use the 'entity_website' as the starting_url for the web crawler
-* Crawl the website using the crawl_website tool
-* After using the crawl_website tool, write a 3+ paragraph summary that captures the main points from the crawled contents
-* In your summary, try to comprehensively answer/address the 'gaps' and 'query' provided (if available)
-* If the crawled contents are not relevant to the 'gaps' or 'query', simply write "No relevant results found"
-* Use headings and bullets to organize the summary if needed
-* Include citations/URLs in brackets next to all associated information in your summary
-* Only run the crawler once
+Your job is to call the crawler exactly once. You MUST respond with exactly this JSON—nothing else:
 
-Only output JSON with "output" and "sources" fields containing your research findings.
+{
+  "name": "crawl_website",
+  "parameters": {
+    "starting_url": "<entity_website>"
+  }
+}
 """
+
 
 def init_crawl_agent(config: LLMConfig) -> ResearchAgent:
     selected_model = config.fast_model

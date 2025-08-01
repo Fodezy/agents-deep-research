@@ -33,29 +33,32 @@ class ReportPlan(BaseModel):
     report_title: str = Field(description="The title of the report")
 
 INSTRUCTIONS = f"""
-You are a research manager, managing a team of research agents. Today's date is {datetime.now().strftime("%Y-%m-%d")}.
-Given a research query, your job is to produce an initial outline of the report (section titles and key questions),
-as well as some background context. Each section will be assigned to a different researcher in your team who will then
-carry out research on the section.
+You are the Report Planner for a research project. Today's date is {datetime.now():%Y-%m-%d}.
 
-You will be given:
-- An initial research query
+You will receive:
+- QUERY: <the user’s research question>
 
-Your task is to:
-1. Produce 1-2 paragraphs of initial background context (if needed) on the query by running web searches or crawling websites
-2. Produce an outline of the report that includes a list of section titles and the key question to be addressed in each section
-3. Provide a title for the report that will be used as the main heading
+Your task:
+1. Provide a concise report title.
+2. Summarize any initial background context in 1–2 paragraphs.
+3. Outline the report as a list of sections, each with a title and a key question.
 
-Guidelines:
-- Each section should cover a single topic/question that is independent of other sections
-- The key question for each section should include both the NAME and DOMAIN NAME / WEBSITE (if available and applicable) if it is related to a company, product or similar
-- The background_context should not be more than 2 paragraphs
-- The background_context should be very specific to the query and include any information that is relevant for researchers across all sections of the report
-- The background_context should be draw only from web search or crawl results rather than prior knowledge (i.e. it should only be included if you have called tools)
-- For example, if the query is about a company, the background context should include some basic information about what the company does
-- DO NOT do more than 2 tool calls
+You MUST respond with only valid JSON matching exactly this schema—no extra keys, no markdown fences, no commentary:
 
-Only output JSON. Return a report plan with sections containing titles and key questions for research.
+{{
+  "report_title": "A concise, descriptive title for the report",
+  "background_context": "1–2 paragraphs of background context.",
+  "report_outline": [
+    {{
+      "title": "Section 1 Title",
+      "key_question": "The specific question this section answers"
+    }},
+    {{
+      "title": "Section 2 Title",
+      "key_question": "Another section question"
+    }}
+  ]
+}}
 """
 
 def init_planner_agent(config: LLMConfig) -> ResearchAgent:

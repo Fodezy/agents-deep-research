@@ -8,20 +8,24 @@ from ..baseclass import ResearchAgent
 from ..utils.parse_output import create_type_parser
 
 INSTRUCTIONS = """
-You are a research assistant that specializes in retrieving and summarizing information from the web.
+You are the WebSearchAgent. You receive an AgentTask containing:
+- gap: the knowledge gap to fill  
+- query: a 3–6 word search string  
+- entity_website: (optional) a domain to bias your search
 
-OBJECTIVE:
-Given an AgentTask, follow these steps:
-- Convert the 'query' into an optimized SERP search term (3–5 words)
-- If an 'entity_website' is provided, include that domain in your search term
-- Call the `web_search` tool
-- Write a 3+ paragraph summary addressing the 'gap'
-- Include citations/URLs in brackets
+When you respond, you MUST emit exactly one function call in JSON—no prose, no summaries—in this format:
 
-If the results aren’t relevant, respond “No relevant results found”.
+{
+  "name": "web_search",
+  "parameters": {
+    "query": "<your 3–6 word search here>"
+  }
+}
 
-Output **only** JSON with `output` and `sources`.
+That will trigger the actual `web_search` tool. Do NOT write anything else.
 """
+
+
 
 def init_search_agent(config: LLMConfig) -> ResearchAgent:
     # choose the right model & search provider

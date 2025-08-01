@@ -14,6 +14,9 @@ class OutputParserError(Exception):
         return self.message
 
 def find_all_json_in_string(string: str) -> List[str]:
+    # Remove thinking tags that some models include
+    string = re.sub(r'<think>.*?</think>', '', string, flags=re.DOTALL)
+    
     code_block_pattern = r'```(?:json)?\s*(.*?)```'
     code_blocks = re.findall(code_block_pattern, string, re.DOTALL)
     candidates = [string] + code_blocks
@@ -50,7 +53,12 @@ def create_type_parser(model: type[BaseModel]) -> Callable[[str], BaseModel]:
             except json.JSONDecodeError as e:
                 # 1a) Fix stray asterisks on keys
                 fixed_blob = re.sub(r'\*(\w+)":', r'"\1":', blob)
-                # 1b) Wrap unquoted string values in quotes
+                # 1b) Fix Python literals to JSON literals
+                fixed_blob = re.sub(r'\bnone\b', 'null', fixed_blob, flags=re.IGNORECASE)
+                fixed_blob = re.sub(r'\bTrue\b', 'true', fixed_blob)
+                fixed_blob = re.sub(r'\bFalse\b', 'false', fixed_blob)
+                
+                # 1c) Wrap unquoted string values in quotes
                 unq_pattern = re.compile(
                     r'("(?P<key>[^"]+)"\s*:\s*)'        # "key":
                     r'(?!["\d]|true|false|null)'       # not quoted, digit, bool or null
@@ -60,7 +68,7 @@ def create_type_parser(model: type[BaseModel]) -> Callable[[str], BaseModel]:
                     lambda m: f'{m.group(1)}"{m.group("val").strip()}"',
                     fixed_blob
                 )
-                # 1c) Retry loading JSON
+                # 1d) Retry loading JSON
                 try:
                     data = json.loads(fixed_blob)
                 except json.JSONDecodeError:
@@ -77,6 +85,10 @@ def create_type_parser(model: type[BaseModel]) -> Callable[[str], BaseModel]:
             # Normalize root keys for PlannerAgent
             if "title" in data and "report_title" not in data:
                 data["report_title"] = data.pop("title")
+            
+            # Handle missing report_outline - create empty outline if not provided
+            if "report_title" in data and "report_outline" not in data:
+                data["report_outline"] = []
 
             if "outline" in data and "report_outline" not in data:
                 outline = data.pop("outline")

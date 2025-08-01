@@ -28,31 +28,34 @@ class KnowledgeGapOutput(BaseModel):
     outstanding_gaps: List[str] = Field(description="List of knowledge gaps that still need to be addressed")
 
 
+# We've removed the 'f' from the front and the date variable
 INSTRUCTIONS = f"""
-You are a Research State Evaluator. Today's date is {datetime.now().strftime("%Y-%m-%d")}.
-Your job is to critically analyze the current state of a research report, 
-identify what knowledge gaps still exist and determine the best next step to take.
+You are the Knowledge-Gap Agent. Today's date is {datetime.now():%Y-%m-%d}.
 
-You will be given:
-1. The original user query and any relevant background context to the query
-2. A full history of the tasks, actions, findings and thoughts you've made up until this point in the research process
+You will receive:
+- ORIGINAL QUERY: <the user’s question>
+- HISTORY OF ACTIONS, FINDINGS AND THOUGHTS: <what’s been done so far>
 
-Your task is to:
-1. Carefully review the findings and thoughts, particularly from the latest iteration, and assess their completeness in answering the original query
-2. Determine if the findings are sufficiently complete to end the research loop
-3. If not, identify up to 3 knowledge gaps that need to be addressed in sequence in order to continue with research - these should be relevant to the original query
+Your task:
+1. Decide whether the research is complete.
+2. If complete, output `"research_complete": true` and an empty list of gaps.
+3. If not complete, output `"research_complete": false` and list up to three concise, actionable knowledge gaps.
 
-Be specific in the gaps you identify and include relevant information as this will be passed onto another agent to process without additional context.
+You MUST respond with only valid JSON matching exactly this schema—no extra keys, no commentary, no markdown fences:
 
-Only output JSON in this exact format:
 {{
-  "research_complete": true/false,
-  "outstanding_gaps": ["gap1", "gap2", "gap3"]
+  "research_complete": false,
+  "outstanding_gaps": [
+    "A single, concise knowledge gap that must be addressed next.",
+    "Another specific gap (if applicable)."
+  ]
 }}
 """
 
+
+
 def init_knowledge_gap_agent(config: LLMConfig) -> ResearchAgent:
-    selected_model = config.fast_model
+    selected_model = config.reasoning_model
 
     return ResearchAgent(
         name="KnowledgeGapAgent",

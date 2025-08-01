@@ -307,6 +307,7 @@ class IterativeResearcher:
         for tool_output in results.values():
             findings.append(tool_output.output)
         self.conversation.set_latest_findings(findings)
+        self._log_message(self.conversation.latest_findings_string())
 
         return results
     
@@ -321,7 +322,19 @@ class IterativeResearcher:
                     task.model_dump_json(),
                 )
                 # Extract ToolAgentOutput from RunResult
-                output = result.final_output_as(ToolAgentOutput)
+                try:
+                    output = result.final_output_as(ToolAgentOutput)
+                except Exception as parse_error:
+                    # If parsing fails, provide detailed error info for debugging
+                    raw_output = str(result.final_output)
+                    if len(raw_output) > 200:
+                        raw_output = raw_output[:200] + "..."
+                    
+                    error_output = ToolAgentOutput(
+                        output=f"Agent returned invalid output format. This usually means the local model generated tool call JSON instead of executing the tool and returning results. Raw output: {raw_output}",
+                        sources=[]
+                    )
+                    return task.gap, agent_name, error_output
             else:
                 output = ToolAgentOutput(
                     output=f"No implementation found for agent {agent_name}",
