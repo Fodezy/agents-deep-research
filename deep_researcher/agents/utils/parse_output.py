@@ -1,4 +1,5 @@
-import json, re
+import json
+import re
 from typing import Any, Callable, List, Dict
 from pydantic import BaseModel, ValidationError
 
@@ -82,7 +83,9 @@ def create_type_parser(model: type[BaseModel]) -> Callable[[str], BaseModel]:
                 if isinstance(outline, dict):
                     report_outline: List[Dict[str, Any]] = []
                     for sec_title, details in outline.items():
-                        q = details.get("Key Question") or details.get("key_question") if isinstance(details, dict) else None
+                        q = None
+                        if isinstance(details, dict):
+                            q = details.get("Key Question") or details.get("key_question")
                         report_outline.append({"title": sec_title, "key_question": q})
                     data["report_outline"] = report_outline
 
@@ -100,6 +103,19 @@ def create_type_parser(model: type[BaseModel]) -> Callable[[str], BaseModel]:
                         {"title": sec.get("title"), "key_question": sec.get("key_question")}
                         for sec in sections
                     ]
+
+            # **NEW** normalize dict-style report_outline → list
+            if "report_outline" in data and isinstance(data["report_outline"], dict):
+                outline_dict = data.pop("report_outline")
+                normalized = []
+                for sec_title, questions in outline_dict.items():
+                    title = sec_title.strip()
+                    if isinstance(questions, list):
+                        for q in questions:
+                            normalized.append({"title": title, "key_question": q})
+                    else:
+                        normalized.append({"title": title, "key_question": questions})
+                data["report_outline"] = normalized
 
             # Normalize keys for AgentSelectionPlan
             if "sections" in data and "tasks" not in data:
