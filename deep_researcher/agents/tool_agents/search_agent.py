@@ -25,6 +25,8 @@ Output **only** JSON with `output` and `sources`.
 
 def init_search_agent(config: LLMConfig) -> ResearchAgent:
     # choose the right model & search provider
+    print(f"[init_search_agent] search_provider={config.search_provider!r}, fast_model={config.fast_model!r}", flush=True)
+
     selected_model = config.fast_model
     provider_base_url = get_base_url(selected_model)
     if config.search_provider == "openai" and 'openai.com' not in provider_base_url:
@@ -35,8 +37,10 @@ def init_search_agent(config: LLMConfig) -> ResearchAgent:
             description="Perform a web search for a given query and return scraped results."
         )(create_web_search_tool(config))
     else:
+        print(f"[init_search_agent] using custom web search tool for {config.search_provider!r}", flush=True)
         web_search_tool = create_web_search_tool(config)
 
+    print(f"[init_search_agent] registered tool: {web_search_tool.__name__!r}", flush=True)
     return ResearchAgent(
         name="WebSearchAgent",
         instructions=INSTRUCTIONS,

@@ -1,9 +1,25 @@
+# searxng-settings.yml
+
 use_default_settings: true
 
 server:
-  secret_key: "randomstringtobeusedforsearchxng"  # Change this to a unique value
+  secret_key: "randomstringtobeusedforsearchxng"  # ← change to your own
 
 search:
   formats:
     - html
     - json
+
+logging:
+  level: INFO
+  access_log: true
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: INFO
+    formatter: default
+
+formatters:
+  default:
+    format: '[%(asctime)s] %(levelname)s in %(name)s: %(message)s'

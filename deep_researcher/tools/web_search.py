@@ -42,6 +42,7 @@ def create_web_search_tool(config: LLMConfig):
     """
     Returns a function_tool that performs a web search and scrapes the top results.
     """
+    print(f"[create_web_search_tool] using provider={config.search_provider!r}, host={config.searxng_host!r}", flush=True)
     filter_agent = init_filter_agent(config)
 
     if config.search_provider == "serper":
@@ -50,17 +51,22 @@ def create_web_search_tool(config: LLMConfig):
         search_client = SearchXNGClient(filter_agent, config.searxng_host)
     else:
         raise ValueError(f"Invalid search provider: {config.search_provider}")
-
+    
     @function_tool
     async def web_search(query: str) -> Union[List[ScrapeResult], str]:
-        """Perform a web search for a given query and return scraped results."""
+        print(f"[web_search] 🔍 Query: {query!r}")           # ← log the incoming query
         try:
             snippets = await search_client.search(
-                query, filter_for_relevance=True, max_results=5
+                query, filter_for_relevance=False, max_results=5
             )
-            return await scrape_urls(snippets)
+            print(f"[web_search] 🔎 Got {len(snippets)} snippet(s): {[s.url for s in snippets]!r}")
+            results = await scrape_urls(snippets)
+            print(f"[web_search] 📄 Scraped {len(results)} pages")
+            return results
         except Exception as e:
+            print(f"[web_search] ❌ Error during search: {e!s}")
             return f"Sorry, I encountered an error while searching: {e!s}"
+
 
     # ensure the tool has a stable name
     web_search.__name__ = "web_search"
@@ -143,15 +149,20 @@ class SerperClient:
         except Exception:
             return results[:max_results]
 
-
 class SearchXNGClient:
     """A client for a SearchXNG-compatible API endpoint."""
 
     def __init__(self, filter_agent: ResearchAgent, host: str):
+        print(f"[SearchXNGClient.__init__] host before strip: {host!r}", flush=True)
         self.filter_agent = filter_agent
         self.host = host.rstrip("/") + "/search"
+        print(f"[SearchXNGClient.__init__] talking to: {self.host!r}", flush=True)
 
     async def search(self, query: str, filter_for_relevance: bool = True, max_results: int = 5) -> List[WebpageSnippet]:
+        # ← right here, before you do anything else in this method:
+        print(f"[SearchXNGClient.search] 🔍 query={query!r}, params={{'q': query, 'format': 'json'}}", flush=True)
+        print(f"[SearchXNGClient.search] 🔗 GET {self.host}", flush=True)
+
         connector = aiohttp.TCPConnector(ssl=ssl_context)
         async with aiohttp.ClientSession(connector=connector) as session:
             params = {"q": query, "format": "json"}
@@ -173,19 +184,13 @@ class SearchXNGClient:
             return snippets[:max_results]
         return await self._filter_results(snippets, query, max_results)
 
-    async def _filter_results(self, results: List[WebpageSnippet], query: str, max_results: int) -> List[WebpageSnippet]:
-        payload = [r.model_dump() for r in results]
-        prompt = f"Original search query: {query}\n\nSearch results:\n{json.dumps(payload, indent=2)}\n\nReturn up to {max_results} relevant results."
-        try:
-            out = await ResearchRunner.run(self.filter_agent, prompt)
-            return out.final_output_as(SearchResults).results_list
-        except Exception:
-            return results[:max_results]
 
 
 # ------- SCRAPING LOGIC -------
 
 async def scrape_urls(items: List[WebpageSnippet]) -> List[ScrapeResult]:
+    print(f"[scrape_urls] Fetching and processing {len(items)} URL(s)…")
+
     connector = aiohttp.TCPConnector(ssl=ssl_context)
     async with aiohttp.ClientSession(connector=connector) as session:
         tasks = [fetch_and_process_url(session, item) for item in items if item.url]
@@ -194,8 +199,10 @@ async def scrape_urls(items: List[WebpageSnippet]) -> List[ScrapeResult]:
 
 
 async def fetch_and_process_url(session: aiohttp.ClientSession, item: WebpageSnippet) -> ScrapeResult:
+    print(f"[fetch_and_process_url] → {item.url}")
     # skip binary or document URLs
     if any(item.url.lower().endswith(ext) for ext in (".pdf", ".doc", ".jpg", ".png")):
+        print(f"[fetch_and_process_url]   ✋ skipped (binary ext)")
         return ScrapeResult(
             url=item.url,
             title=item.title,
@@ -205,6 +212,7 @@ async def fetch_and_process_url(session: aiohttp.ClientSession, item: WebpageSni
 
     try:
         async with session.get(item.url, timeout=8) as resp:
+            print(f"[fetch_and_process_url]   ← HTTP {resp.status}")
             if resp.status != 200:
                 return ScrapeResult(
                     url=item.url,
@@ -214,6 +222,7 @@ async def fetch_and_process_url(session: aiohttp.ClientSession, item: WebpageSni
                 )
             html = await resp.text()
     except Exception as e:
+        print(f"[fetch_and_process_url]   ❌ Exception {e!s}")
         return ScrapeResult(
             url=item.url,
             title=item.title,

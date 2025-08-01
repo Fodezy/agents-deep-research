@@ -6,4 +6,4 @@ services:
     ports:
       - "8888:8080"
     volumes:
-      - ./searxng-settings.yml:/etc/searxng/settings.yml
+      - ./searxng-settings.yml:/etc/searxng/settings.yml:ro
