@@ -54,18 +54,37 @@ def create_web_search_tool(config: LLMConfig):
     
     @function_tool
     async def web_search(query: str) -> Union[List[ScrapeResult], str]:
-        print(f"[web_search] 🔍 Query: {query!r}")           # ← log the incoming query
+        print(f"[web_search] Starting search for query: {query!r}", flush=True)
         try:
+            print(f"[web_search] Calling search_client.search() with provider: {config.search_provider}", flush=True)
             snippets = await search_client.search(
                 query, filter_for_relevance=False, max_results=5
             )
-            print(f"[web_search] 🔎 Got {len(snippets)} snippet(s): {[s.url for s in snippets]!r}")
-            results = await scrape_urls(snippets)
-            print(f"[web_search] 📄 Scraped {len(results)} pages")
-            return results
+            print(f"[web_search] Search completed. Got {len(snippets)} snippet(s)", flush=True)
+            
+            if snippets:
+                snippet_urls = [s.url for s in snippets]
+                print(f"[web_search] URLs found: {snippet_urls}", flush=True)
+                
+                print(f"[web_search] Starting scraping of {len(snippets)} pages", flush=True)
+                results = await scrape_urls(snippets)
+                print(f"[web_search] Scraping completed. Scraped {len(results)} pages successfully", flush=True)
+                
+                if not results:
+                    print(f"[web_search] Warning: No pages could be scraped from {len(snippets)} URLs", flush=True)
+                    return f"Found {len(snippets)} search results but could not scrape any content from them."
+                
+                return results
+            else:
+                print(f"[web_search] No search results found for query: {query!r}", flush=True)
+                return f"No search results found for query: {query}"
+                
         except Exception as e:
-            print(f"[web_search] ❌ Error during search: {e!s}")
-            return f"Sorry, I encountered an error while searching: {e!s}"
+            import traceback
+            error_details = traceback.format_exc()
+            print(f"[web_search] Exception during search: {type(e).__name__}: {e}", flush=True)
+            print(f"[web_search] Full traceback:\n{error_details}", flush=True)
+            return f"Search failed with {type(e).__name__}: {e}"
 
 
     # ensure the tool has a stable name
@@ -159,30 +178,67 @@ class SearchXNGClient:
         print(f"[SearchXNGClient.__init__] talking to: {self.host!r}", flush=True)
 
     async def search(self, query: str, filter_for_relevance: bool = True, max_results: int = 5) -> List[WebpageSnippet]:
-        # ← right here, before you do anything else in this method:
-        print(f"[SearchXNGClient.search] 🔍 query={query!r}, params={{'q': query, 'format': 'json'}}", flush=True)
-        print(f"[SearchXNGClient.search] 🔗 GET {self.host}", flush=True)
+        print(f"[SearchXNGClient.search] Starting search for query={query!r}", flush=True)
+        print(f"[SearchXNGClient.search] GET {self.host} with params={{'q': query, 'format': 'json'}}", flush=True)
 
         connector = aiohttp.TCPConnector(ssl=ssl_context)
-        async with aiohttp.ClientSession(connector=connector) as session:
-            params = {"q": query, "format": "json"}
-            async with session.get(self.host, params=params) as response:
-                response.raise_for_status()
-                data = await response.json()
-                snippets = [
-                    WebpageSnippet(
-                        url=item.get("url", ""),
-                        title=item.get("title", ""),
-                        description=item.get("content", ""),
-                    )
-                    for item in data.get("results", [])
-                ]
+        try:
+            async with aiohttp.ClientSession(connector=connector) as session:
+                params = {"q": query, "format": "json"}
+                async with session.get(self.host, params=params) as response:
+                    print(f"[SearchXNGClient.search] HTTP Response Status: {response.status}", flush=True)
+                    
+                    if response.status != 200:
+                        error_text = await response.text()
+                        print(f"[SearchXNGClient.search] HTTP Error {response.status}: {error_text}", flush=True)
+                        response.raise_for_status()
+                    
+                    data = await response.json()
+                    print(f"[SearchXNGClient.search] Raw response keys: {list(data.keys())}", flush=True)
+                    print(f"[SearchXNGClient.search] Results count: {len(data.get('results', []))}", flush=True)
+                    
+                    snippets = [
+                        WebpageSnippet(
+                            url=item.get("url", ""),
+                            title=item.get("title", ""),
+                            description=item.get("content", ""),
+                        )
+                        for item in data.get("results", [])
+                    ]
+                    
+                    print(f"[SearchXNGClient.search] Created {len(snippets)} snippets", flush=True)
+                    
+        except Exception as e:
+            print(f"[SearchXNGClient.search] Exception during search: {type(e).__name__}: {e}", flush=True)
+            return []
 
         if not snippets:
+            print(f"[SearchXNGClient.search] No snippets found", flush=True)
             return []
         if not filter_for_relevance:
+            print(f"[SearchXNGClient.search] Returning {len(snippets[:max_results])} unfiltered results", flush=True)
             return snippets[:max_results]
+        
+        print(f"[SearchXNGClient.search] Filtering results for relevance", flush=True)
         return await self._filter_results(snippets, query, max_results)
+
+    async def _filter_results(self, results: List[WebpageSnippet], query: str, max_results: int) -> List[WebpageSnippet]:
+        """Filter search results for relevance using the filter agent."""
+        print(f"[SearchXNGClient._filter_results] Filtering {len(results)} results for query: {query!r}", flush=True)
+        
+        payload = [r.model_dump() for r in results]
+        prompt = f"Original search query: {query}\n\nSearch results:\n{json.dumps(payload, indent=2)}\n\nReturn up to {max_results} relevant results."
+        
+        try:
+            print(f"[SearchXNGClient._filter_results] Calling filter agent", flush=True)
+            out = await ResearchRunner.run(self.filter_agent, prompt)
+            filtered_results = out.final_output_as(SearchResults).results_list
+            print(f"[SearchXNGClient._filter_results] Filter agent returned {len(filtered_results)} results", flush=True)
+            return filtered_results
+        except Exception as e:
+            print(f"[SearchXNGClient._filter_results] Filter agent failed: {type(e).__name__}: {e}", flush=True)
+            print(f"[SearchXNGClient._filter_results] Falling back to unfiltered results", flush=True)
+            return results[:max_results]
 
 
 
