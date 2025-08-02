@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Knowledge Gap Report",
+  "description": "Schema for reporting research completeness and outstanding knowledge gaps",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "enum": [1],
+      "description": "Schema version for compatibility tracking"
+    },
+    "research_complete": {
+      "type": "boolean",
+      "description": "Whether the research is complete enough to answer the original query"
+    },
+    "outstanding_gaps": {
+      "type": "array",
+      "description": "List of specific knowledge gaps that still need to be addressed",
+      "minItems": 0,
+      "maxItems": 3,
+      "items": {
+        "type": "string",
+        "description": "A specific, actionable knowledge gap",
+        "minLength": 10,
+        "maxLength": 200
+      }
+    }
+  },
+  "required": ["schema_version", "research_complete", "outstanding_gaps"],
+  "additionalProperties": false
+}

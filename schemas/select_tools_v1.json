@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Selection Plan",
+  "description": "Schema for selecting specialized research agents to address knowledge gaps",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "enum": [1],
+      "description": "Schema version for compatibility tracking"
+    },
+    "tasks": {
+      "type": "array",
+      "description": "List of agent tasks to address knowledge gaps",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "properties": {
+          "gap": {
+            "type": "string",
+            "description": "The specific knowledge gap being addressed",
+            "minLength": 10,
+            "maxLength": 200
+          },
+          "agent": {
+            "type": "string",
+            "enum": ["WebSearchAgent", "SiteCrawlerAgent"],
+            "description": "The name of the specialized agent to use"
+          },
+          "query": {
+            "type": "string",
+            "description": "The specific search query for the agent (3-6 words)",
+            "minLength": 5,
+            "maxLength": 50
+          },
+          "entity_website": {
+            "type": ["string", "null"],
+            "format": "uri",
+            "description": "Optional website URL for the entity being researched"
+          }
+        },
+        "required": ["gap", "agent", "query"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["schema_version", "tasks"],
+  "additionalProperties": false
+}

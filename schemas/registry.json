@@ -1,0 +1,44 @@
+{
+  "schema_registry": {
+    "version": "1.0.0",
+    "description": "Registry of all JSON schemas used by agents-deep-research",
+    "last_updated": "2025-01-19",
+    "schemas": {
+      "select_tools": {
+        "current_version": 1,
+        "file": "select_tools_v1.json",
+        "description": "Agent selection for addressing knowledge gaps",
+        "used_by": ["ToolSelectorAgent"],
+        "outlines_function": "select_tools"
+      },
+      "report_gaps": {
+        "current_version": 1,
+        "file": "report_gaps_v1.json", 
+        "description": "Knowledge gap evaluation and reporting",
+        "used_by": ["KnowledgeGapAgent"],
+        "outlines_function": "report_gaps"
+      },
+      "create_plan": {
+        "current_version": 1,
+        "file": "create_plan_v1.json",
+        "description": "Research plan creation with outline and context",
+        "used_by": ["PlannerAgent"],
+        "outlines_function": "create_plan"
+      },
+      "chunk_summary": {
+        "current_version": 1,
+        "file": "chunk_summary_v1.json",
+        "description": "Content chunk summarization for hierarchical processing",
+        "used_by": ["WebSearchAgent", "SiteCrawlerAgent"],
+        "outlines_function": "summarize_chunk"
+      }
+    },
+    "compatibility_matrix": {
+      "v1": {
+        "supported_agents": ["ToolSelectorAgent", "KnowledgeGapAgent", "PlannerAgent"],
+        "deprecated": false,
+        "migration_required": false
+      }
+    }
+  }
+}

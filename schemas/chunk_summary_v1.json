@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Chunk Summary",
+  "description": "Schema for summarizing content chunks during hierarchical summarization",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "enum": [1],
+      "description": "Schema version for compatibility tracking"
+    },
+    "source_info": {
+      "type": "object",
+      "description": "Information about the source of this chunk",
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Source URL of the content"
+        },
+        "chunk_index": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Index of this chunk within the source document"
+        },
+        "total_chunks": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Total number of chunks from this source"
+        }
+      },
+      "required": ["url", "chunk_index", "total_chunks"],
+      "additionalProperties": false
+    },
+    "key_points": {
+      "type": "array",
+      "description": "List of key points extracted from this chunk",
+      "minItems": 1,
+      "maxItems": 5,
+      "items": {
+        "type": "string",
+        "description": "A concise key point or finding",
+        "minLength": 5,
+        "maxLength": 150
+      }
+    },
+    "relevance_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Relevance score of this chunk to the research query (0-1)"
+    }
+  },
+  "required": ["schema_version", "source_info", "key_points", "relevance_score"],
+  "additionalProperties": false
+}

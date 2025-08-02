@@ -9,3 +9,4 @@ openai-agents==0.0.7
 md2pdf
 pytest
 pytest-asyncio
+outlines

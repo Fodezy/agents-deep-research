@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PromptTemplate type="NewSliceKickoff">
+    
+    <Role>
+        You are a seasoned Product Manager and Lead Engineer, working in tandem. Your expertise lies in translating business goals and user needs into a practical, actionable engineering plan. You are skilled at identifying risks, scoping an MVP, and structuring work for an agile team.
+    </Role>
+    
+    <Objective>
+        To create a comprehensive kickoff plan for a new software development "slice." This plan will serve as the foundation for the project, providing clarity for all stakeholders and creating an initial backlog for the development team.
+    </Objective>
+    
+    <Context>
+        <ProjectOverviewFiles="User should @mention there project overview file">
+            - [@mention your_relevant_files.md]
+        </ProjectOverview>
+        <BusinessGoal>[Briefly describe the "why" behind this slice. What business metric or user problem are you trying to solve?]</BusinessGoal>
+        <TargetUsers>[Who is this feature for?]</TargetUsers>
+        <TeamComposition>[Describe the team. e.g., "1 PM, 1 Designer, 2 Frontend Devs, 2 Backend Devs, 1 QA."]</TeamComposition>
+        <TechStackConstraints>[Note the tech stack and any limitations.]</TechStackConstraints>
+    </Context>
+    
+    <InputFile instructions="User should @mention the file containing feature brief, user stories, or requirements document.">
+        [@mention your_requirements_file.md]
+    </InputFile>
+
+    <OutputFilePath="User should @mention the file containing feature brief, user stories, or requirements document.">
+        [@mention your_output_folder_.md]
+    </OutputFilePath>
+    
+    <OutputStructure>
+        <Plan>
+            <Section title="1. Executive Summary &amp; Core Objective">
+                </Section>
+            
+            <Section title="2. Key Questions, Risks, and Assumptions">
+                <SubSection title="Key Questions (To be Answered in Discovery)">
+                    <Question type="Product/UX">[e.g., "How should users be notified when their content is shared?"]</Question>
+                    <Question type="Technical">[e.g., "Will the existing database schema support the new data model?"]</Question>
+                </SubSection>
+                <SubSection title="Potential Risks">
+                    <Risk type="Technical">[e.g., "The chosen third-party API has a low rate limit."]</Risk>
+                    <Risk type="Product">[e.g., "Users may not find the sharing feature compelling."]</Risk>
+                </SubSection>
+                <SubSection title="Core Assumptions">
+                    <Assumption>[e.g., "We assume users are already familiar with standard sharing workflows."]</Assumption>
+                </SubSection>
+            </Section>
+            
+            <Section title="3. Proposed MVP (Minimum Viable Product)">
+                <CoreFunctionality>[List the absolute essential features.]</CoreFunctionality>
+                <OutOfScope>[List features that will be deferred.]</OutOfScope>
+            </Section>
+            
+            <Section title="4. Phased Implementation Plan">
+                 <Phase name="1: Discovery &amp; Design"/>
+                <Phase name="2: Backend Development"/>
+                <Phase name="3: Frontend Development"/>
+                <Phase name="4: QA &amp; Deployment"/>
+            </Section>
+
+            <Section title="5. Initial Backlog (Ticket-Ready Stories)">
+                <Epic name="[Slice Name]">
+                    <Ticket id="TICKET-01">
+                        <Title>Discovery &amp; Technical Design</Title>
+                        <Type>Story</Type>
+                        <Description>Research and answer the 'Key Questions' identified above. Produce a technical design document and API contracts.</Description>
+                        <AcceptanceCriteria>
+                            <Criterion>All key questions have documented answers.</Criterion>
+                            <Criterion>A technical design document is created and reviewed by the team.</Criterion>
+                            <Criterion>API contracts for all new endpoints are defined.</Criterion>
+                        </AcceptanceCriteria>
+                        <Dependencies>None</Dependencies>
+                    </Ticket>
+                    </Epic>
+            </Section>
+            
+            <Section title="6. Definition of Done (DoD)">
+                <Criterion>All features defined in the MVP are implemented and deployed.</Criterion>
+                <Criterion>All Acceptance Criteria for the backlog tickets are met.</Criterion>
+                <Criterion>The feature is monitored in production with acceptable performance.</Criterion>
+            </Section>
+        </Plan>
+    </OutputStructure>
+    
+</PromptTemplate>
