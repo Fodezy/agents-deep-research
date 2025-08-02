@@ -17,10 +17,12 @@ class ResearchAgent(Agent[TContext]):
         self,
         *args,
         output_parser: Optional[Callable[[str], Any]] = None,
+        summariser=None,
         **kwargs
     ):
         # The output_parser is a function that only takes effect if output_type is not specified
         self.output_parser = output_parser
+        self.summariser = summariser
 
         # If both are specified, we raise an error - they can't be used together
         if self.output_parser and kwargs.get('output_type'):
@@ -39,6 +41,16 @@ class ResearchAgent(Agent[TContext]):
             parsed_output = self.output_parser(raw_output)
             run_result.final_output = parsed_output            
         return run_result
+    
+    async def process_large_content(self, content: str, context: str = "") -> str:
+        """Process large content through hierarchical summariser if available"""
+        if self.summariser:
+            # Use TokenChunker estimation for consistency
+            estimated_chunks = self.summariser.chunker.estimate_chunks(content)
+            if estimated_chunks > 1:  # More than one chunk = needs summarisation
+                result = await self.summariser.summarise_large_content(content, context)
+                return result["final_summary"]
+        return content  # Return as-is for small content
     
 
 class ResearchRunner(Runner):

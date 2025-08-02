@@ -6,6 +6,7 @@ from ...llm_config import LLMConfig, model_supports_structured_output, get_base_
 from . import ToolAgentOutput
 from ..baseclass import ResearchAgent
 from ..utils.parse_output import create_type_parser
+from ..utils.hierarchical_summariser import HierarchicalSummariser
 
 INSTRUCTIONS = """
 You are the WebSearchAgent. You receive an AgentTask containing:
@@ -44,12 +45,21 @@ def init_search_agent(config: LLMConfig) -> ResearchAgent:
         print(f"[init_search_agent] using custom web search tool for {config.search_provider!r}", flush=True)
         web_search_tool = create_web_search_tool(config)
 
+    # Add hierarchical summariser for large content
+    summariser = HierarchicalSummariser(
+        fast_model=config.fast_model,
+        slow_model=config.main_model,
+        chunk_size=800,
+        overlap=100
+    )
+
     print(f"[init_search_agent] registered tool: {web_search_tool.__name__!r}", flush=True)
     return ResearchAgent(
         name="WebSearchAgent",
         instructions=INSTRUCTIONS,
         tools=[web_search_tool],
         model=selected_model,
+        summariser=summariser,
         output_type=ToolAgentOutput if model_supports_structured_output(selected_model) else None,
         output_parser=create_type_parser(ToolAgentOutput) if not model_supports_structured_output(selected_model) else None
     )

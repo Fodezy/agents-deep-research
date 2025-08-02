@@ -15,6 +15,7 @@ from . import ToolAgentOutput
 from ...llm_config import LLMConfig, model_supports_structured_output
 from ..baseclass import ResearchAgent
 from ..utils.parse_output import create_type_parser
+from ..utils.hierarchical_summariser import HierarchicalSummariser
 
 
 INSTRUCTIONS = """
@@ -37,11 +38,20 @@ Your job is to call the crawler exactly once. You MUST respond with exactly this
 def init_crawl_agent(config: LLMConfig) -> ResearchAgent:
     selected_model = config.fast_model
 
+    # Add hierarchical summariser for large crawled content
+    summariser = HierarchicalSummariser(
+        fast_model=config.fast_model,
+        slow_model=config.main_model,
+        chunk_size=1000,  # Larger chunks for crawled content
+        overlap=150
+    )
+
     return ResearchAgent(
         name="SiteCrawlerAgent",
         instructions=INSTRUCTIONS,
         tools=[crawl_website],
         model=selected_model,
+        summariser=summariser,
         output_type=ToolAgentOutput if model_supports_structured_output(selected_model) else None,
         output_parser=create_type_parser(ToolAgentOutput) if not model_supports_structured_output(selected_model) else None
     )

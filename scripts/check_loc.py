@@ -11,24 +11,34 @@ def count_loc(file_path: Path) -> int:
     return len(lines)
 
 def main():
-    token_chunker_path = Path("deep_researcher/agents/utils/token_chunker.py")
+    # Check multiple files with their limits
+    files_to_check = [
+        ("deep_researcher/agents/utils/token_chunker.py", 150),
+        ("deep_researcher/agents/utils/hierarchical_summariser.py", 200)
+    ]
     
-    if not token_chunker_path.exists():
-        print(f"Error: {token_chunker_path} not found")
-        sys.exit(1)
+    all_passed = True
     
-    loc = count_loc(token_chunker_path)
-    max_loc = 150
+    for file_path, max_loc in files_to_check:
+        path = Path(file_path)
+        
+        if not path.exists():
+            print(f"Error: {file_path} not found")
+            all_passed = False
+            continue
+        
+        loc = count_loc(path)
+        status = "PASS" if loc <= max_loc else "FAIL"
+        
+        print(f"{path.name} lines of code: {loc}")
+        print(f"Maximum allowed: {max_loc}")
+        print(f"[{status}] {'Under' if loc <= max_loc else 'Exceeds'} LoC limit")
+        print()
+        
+        if loc > max_loc:
+            all_passed = False
     
-    print(f"TokenChunker lines of code: {loc}")
-    print(f"Maximum allowed: {max_loc}")
-    
-    if loc <= max_loc:
-        print("[OK] PASS: Under LoC limit")
-        sys.exit(0)
-    else:
-        print("[FAIL] FAIL: Exceeds LoC limit")
-        sys.exit(1)
+    sys.exit(0 if all_passed else 1)
 
 if __name__ == "__main__":
     main()
