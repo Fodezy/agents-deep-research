@@ -10,3 +10,5 @@ md2pdf
 pytest
 pytest-asyncio
 outlines
+tiktoken
+psutil

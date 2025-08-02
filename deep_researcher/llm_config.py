@@ -1,7 +1,9 @@
 from agents import set_tracing_disabled
 set_tracing_disabled(True)
 
-from typing import Union
+from typing import Union, Any, Callable, Awaitable
+import os 
+
 
 from agents import (
     OpenAIChatCompletionsModel,
@@ -162,6 +164,31 @@ class LLMConfig:
         self.main_model = _init_model(main_model_provider, main_model)
         self.fast_model = _init_model(fast_model_provider, fast_model)
 
+    async def call_with_functions(
+        self,
+        model_client: Any,
+        messages: list[dict],
+        functions: list[dict],
+        function_call: Union[str, dict] = "auto",
+        **chat_kwargs,
+    ) -> Any:
+        """
+        Send a chat to `model_client`, passing function schemas when enabled.
+
+        - Honors ENABLE_FUNCTION_CALLING env var.
+        - If function calling is disabled or no functions provided, falls back to a normal chat call.
+        """
+        # Build the base kwargs for chat()
+        api_kwargs = {"messages": messages, **chat_kwargs}
+
+        # Conditionally include function schema
+        if os.getenv("ENABLE_FUNCTION_CALLING", "false").lower() in ("1", "true") and functions:
+            api_kwargs["functions"] = functions
+            api_kwargs["function_call"] = function_call
+
+        # Delegate to the underlying client
+        return await model_client.chat(**api_kwargs)
+
 
 def create_default_config() -> LLMConfig:
     return LLMConfig(
@@ -193,3 +220,32 @@ def model_supports_structured_output(
     # return any(
     #     provider in get_base_url(model) for provider in structured_output_providers
     # )
+
+
+def get_summariser_tokenizer():
+    """Get exact same tokenizer used by summariser models"""
+    try:
+        import tiktoken
+        # Use GPT-4 tokenizer as it's compatible with most OpenAI models
+        return tiktoken.encoding_for_model("gpt-4")
+    except ImportError:
+        # Fallback to simple character-based estimation if tiktoken not available
+        class SimpleTokenizer:
+            def __init__(self):
+                self._text_cache = {}
+            
+            def encode(self, text: str) -> list:
+                # Rough approximation: 3.5 chars per token
+                tokens = list(range(len(text) // 4))
+                self._text_cache[id(tokens)] = text
+                return tokens
+            
+            def decode(self, tokens: list) -> str:
+                # Try to find original text from cache
+                text = self._text_cache.get(id(tokens))
+                if text:
+                    return text[:len(tokens) * 4]
+                # Fallback: return empty string for unknown tokens
+                return " " * (len(tokens) * 4)
+        
+        return SimpleTokenizer()

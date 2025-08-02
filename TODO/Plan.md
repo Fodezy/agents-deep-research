@@ -1,153 +1,94 @@
-# 🌐 Agents-Deep-Research 2.0 — **Master Implementation Plan**
-
-*(Outlines + JSON-Validation/Auto-Repair + Hierarchical Summarisation + Model-Role Tagging)*
+Below is a **high-level migration roadmap** – no line-by-line code, just the steps, files, and responsibilities – for upgrading your current “prompt-only” pipeline to the hybrid (function-schema + auto-repair + few-shot) approach.
 
 ---
 
-## 0  Executive Snapshot
+## 0. Guiding Principles
 
-| Pain-Point                           | Solution Pillar                                                    | Benefit                                  |
-| ------------------------------------ | ------------------------------------------------------------------ | ---------------------------------------- |
-| Malformed JSON → `OutputParserError` | **Outlines structured generation + ValidationWrapper auto-repair** | 98 %+ valid outputs, 1-retry max         |
-| Context overflow on large pages      | **Hierarchical chunk-summarisation**                               | Handles 30 k tokens pages; lower cost    |
-| Model confusion / swap friction      | **Model-Role registry with hub tags**                              | Clear mapping; easy benchmarking & swaps |
-
----
-
-## 1  New Canonical Architecture
-
-```
-User Query
-   │
-   ▼
-Planner Agent (PLANNER_MODEL 🧠 — Tag: Text Generation)
-   ├─ Outlines→ create_plan()
-   ▼
-Iterative Loop per Section
-   ├─ KnowledgeGapAgent   (Text Gen)
-   ├─ ToolSelectorAgent ⚙ (TOOL_CALLING_MODEL — Tag: Text Generation)
-   │     • Outlines→ select_tools()
-   │
-   ├─ WebSearch / Crawl Agents
-   │     • scrape → Chunker → SUMMARIZATION_MODEL 📝 (Tag: Summarization)
-   │     • chunk summaries → slow model aggregation (WRITER_MODEL ✍️ or same Summariser)
-   │
-   └─ WriterAgent  ✍️ (Tag: Text Generation)
-Final Proofread → Report
-```
-
-*Every agent that outputs JSON is now an **Outlines function**; every free-text generation is guarded by ValidationWrapper.*
+| Pillar                               | What It Means for You                                                                                                                                                                |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Native function calling**          | Every agent that needs to return structured data (Planner, ToolSelector, SiteCrawler, WebSearch, etc.) is exposed to the model as an OpenAI “function” with a JSON Schema.           |
+| **Wrapper validation & auto-repair** | Every time the model responds, you validate its `arguments` against the matching Pydantic model. If invalid, re-prompt once or twice with a terse “fix-it” message before giving up. |
+| **Few-shot**                         | Keep a tiny set of gold-standard function-call examples in the prompt history for each agent. Only 1-3 short examples are usually enough.                                            |
 
 ---
 
-## 2  Pillar 1 — Outlines-Based Structured Generation
+## 1. Where to Touch the Code (Top-Level View)
 
-| Step                                                                                                           | Action |
-| -------------------------------------------------------------------------------------------------------------- | ------ |
-| **A.** Add `outlines` to project dependencies                                                                  |        |
-| **B.** Define function schemas in pure JSON (versioned) — e.g. `select_tools`, `knowledge_gaps`, `create_plan` |        |
-| **C.** Refactor agents to call `outlines.generate(function=…, prompt=…)` instead of f-string coercion          |        |
-| **D.** Remove regex “fixers” from `parse_output.py`                                                            |        |
-
----
-
-## 3  Pillar 2 — ValidationWrapper + Auto-Repair
-
-1. **Intercept** every LLM response.
-2. **If** Outlines returns text → extract `function_call.arguments`.
-3. **Pydantic validate** vs schema.
-4. **On error** → single repair prompt:
-
-   ```
-   Your JSON failed because: {error}. 
-   Return ONLY corrected JSON for {function_name}.
-   ```
-5. Metrics emitted: `validation_failed`, `repair_success`, `repair_failed`, latency.
-
-*Library location*: `deep_researcher/agents/utils/validation_wrapper.py`.
+| Layer                   | Files / Modules                                                                                                              | What you’ll add / change                                                                                                                               |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Schemas & Functions** | `agents/tool_selector_agent.py`, `planner_agent.py`, `knowledge_gap_agent.py`, plus each tool agent in `agents/tool_agents/` | Replace giant `INSTRUCTIONS` strings with *system* messages + JSON-Schema function specs.                                                              |
+| **LLM wrapper**         | `agents/baseclass.py` **or** a new small helper in `utils/`                                                                  | • Call the model with `functions=[…schema…]`.<br>• Validate `arguments` with Pydantic.<br>• If validation fails: re-prompt the model once, then raise. |
+| **Few-shot store**      | Could be inline in each agent file or a small YAML/JSON in `agents/utils/examples/`                                          | A couple of canonical Q → function-call examples per agent.                                                                                            |
+| **Config plumbing**     | `llm_config.py`                                                                                                              | Add helpers for passing the `functions` list and system prompt to the underlying chat-completion call.                                                 |
 
 ---
 
-## 4  Pillar 3 — Hierarchical Summarisation Engine
+## 2. Implementation Steps (Phase-by-Phase)
 
-| Phase           | Algorithm                                                                                        |
-| --------------- | ------------------------------------------------------------------------------------------------ |
-| **Chunking**    | `strip_html→split_on_tokens(≈800)`                                                               |
-| **Per-chunk**   | call fast `SUMMARIZATION_MODEL` (e.g. φ-mini) → bulleted summary                                 |
-| **Aggregation** | concatenate chunk summaries → large-context model (Qwen-30B or Writer) produces polished summary |
-| **Output**      | JSON `{ "points": [...] }` ready for WriterAgent                                                 |
+### Phase A  — Add Function Schemas
 
-*Lives inside `tools/web_search.py` & `tools/crawl_website.py`.*
+1. **Pick one agent first** (e.g., *ToolSelector*).
+2. Define its schema as a Python dict (or Pydantic `model_json_schema()` dump).
+3. Pass that schema in the `functions` parameter when you call OpenAI.
+4. Remove the JSON template from its instruction string; keep only a short system prompt like:
 
----
+   > “You are the ToolSelector. Return a `select_tools` function call.”
 
-## 5  Model-Role Registry & Tags
+Verify that the model now returns something like:
 
-```yaml
-models:
-  planner:             meta-llama-3-8b-instruct   # tag: text-generation
-  tool_caller:         phi3-mini-128k            # tag: text-generation
-  summariser_fast:     mistral-7b-instruct        # tag: summarization
-  summariser_slow:     qwen-30b-chat              # tag: text-generation
-  writer:              qwen-30b-chat              # tag: text-generation
+```json
+{
+  "name": "select_tools",
+  "arguments": {
+    "tasks": [ … ]
+  }
+}
 ```
 
-*Registry lives in `llm_config.py`; utility enforces that chosen model advertises the correct hub tag.*
+### Phase B  — Central Validation + Auto-Reprompt
+
+1. In `agents/baseclass.py` (or a new helper), wrap `ResearchRunner.run()` so that after the chat call you:
+
+   * Parse `response.choices[0].message.function_call.arguments`.
+   * `pydantic_model.parse_obj(… )`
+   * On `ValidationError`, issue a *single* follow-up prompt:
+     *“The JSON you returned was invalid because X. Please reply with only a corrected function call.”*
+   * If it still fails, raise your existing `OutputParserError`.
+
+### Phase C  — Few-Shot Examples
+
+1. For stubborn agents (e.g., SiteCrawlerAgent), prepend 1–2 *assistant* messages **before** the user call that show a valid function call.
+2. Keep each example < 25 tokens; no prose.
+
+### Phase D  — Iterate Agent-by-Agent
+
+Repeat Phases A–C for:
+
+* `planner_agent` → returns `create_plan` function
+* `knowledge_gap_agent` → returns `report_gaps` function
+* `tool_agents/*` → each returns its own specific function or summary object
+
+Deploy incrementally; run unit tests after each agent conversion.
 
 ---
 
-## 6  Phased Delivery Timeline
+## 3. Testing & Roll-out
 
-| Phase                          | Duration | Key Deliverables                                                           |
-| ------------------------------ | -------- | -------------------------------------------------------------------------- |
-| **0. Kick-off**                | 0.5 wk   | Sign-off on plan, pick models                                              |
-| **1. Foundations**             | 1 wk     | Outlines installed, ValidationWrapper + metrics                            |
-| **2. Search & Crawl Refactor** | 1 wk     | Chunker + HierarchicalSummariser integrated; agents emit JSON via Outlines |
-| **3. Core Agents Conversion**  | 1 wk     | Planner, ToolSelector, KnowledgeGap → Outlines                             |
-| **4. Writer/Tuning**           | 0.5 wk   | Writer guardrails, final proofread pass                                    |
-| **5. QA & Roll-out**           | 1 wk     | E2E tests, latency bench, feature flags, docs                              |
+1. **Unit tests**: Add pytest cases that mock the chat response with both *valid* and *broken* JSON to ensure your auto-repair logic works.
+2. **Dry run**: `python -m deep_researcher.main --mode deep --query "smoke test"` and confirm:
 
-*Total: ≈ 5 weeks.*
+   * No `OutputParserError`s from JSON shape issues.
+   * No markdown fences/backticks in returned arguments.
+---
+
+## 4. Long-Term Maintenance Tips
+
+* **Version your schemas** so future field additions don’t break older code.
+* Keep **few-shot examples** tiny; update them when you change schema.
+* Add a **metrics counter**: “auto-repair attempts per call.” Spikes mean your prompt drifted.
 
 ---
 
-## 7  Ticket-Ready Backlog (excerpt)
+### Bottom Line
 
-| ID            | Story                                                | Depends On |
-| ------------- | ---------------------------------------------------- | ---------- |
-| **HYBRID-01** | Failure analysis & schema definitions                | —          |
-| **HYBRID-02** | ValidationWrapper + Observability                    | 01         |
-| **HYBRID-03** | Model Registry + Tag checker                         | 02         |
-| **HYBRID-04** | Implement Chunker util                               | 02         |
-| **HYBRID-05** | Integrate HierarchicalSummariser into WebSearchAgent | 04         |
-| **HYBRID-06** | Outlines refactor: ToolSelector                      | 02         |
-| **HYBRID-07** | Outlines refactor: Planner                           | 06         |
-| **HYBRID-08** | Outlines refactor: KnowledgeGapAgent                 | 07         |
-| **HYBRID-09** | WriterAgent length & markdown guard                  | 07         |
-| **HYBRID-10** | End-to-End benchmark & doc                           | 08 + 09    |
-
----
-
-## 8  Quality & Success Metrics
-
-* **Structural Validity Rate** ≥ 98 % (post-retry).
-* **Avg Extra Latency** ≤ +20 %.
-* **Summarisation F-score** ≥ 0.85 vs gold.
-* Zero `OutputParserError` on regression suite.
-
----
-
-## 9  Definition of Done
-
-* All JSON-emitting agents run on Outlines functions with versioned schemas.
-* ValidationWrapper passes unit suite; auto-repair succeeds on ≥ 80 % of synthetic malformed cases.
-* WebSearch & Crawl agents summarise 25 k-token Wikipedia page without crash.
-* `deep_researcher.main` completes the “quantum entanglement” query end-to-end on local models without manual intervention.
-* CI pipeline includes schema regression tests and latency benchmarks.
-* Docs: migration guide + troubleshooting + model-tag matrix.
-
----
-
-### 📌 Next Action
-
-Start **HYBRID-01**: finalise schemas (`select_tools`, `knowledge_gaps`, `create_plan`, `chunk_summary`), choose fast & slow summariser models, and stub the ValidationWrapper.
+By shifting the shape-enforcement burden from giant f-strings to OpenAI function calls + programmatic validation, you’ll virtually eliminate the stream of parse errors you’re seeing now. The wrapper’s auto-repair closes the remaining gap, and few-shot keeps the model anchored. This roadmap gives you the high-level moves—you can now schedule concrete coding tasks file-by-file.

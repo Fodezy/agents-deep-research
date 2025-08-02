@@ -1,0 +1,91 @@
+{
+  "test_samples": [
+    {
+      "name": "newline_in_field_name",
+      "description": "Field name broken across lines with actual newlines",
+      "schema": "report_gaps",
+      "input": "{\n  \"schema_v\n\non\": 1,\n  \"research_complete\": false,\n  \"outstanding_gaps\": [\n    \"Develop an understanding of the experiments confirming quantum entanglement\"\n  ]\n}",
+      "expected_repair": {
+        "schema_version": 1,
+        "research_complete": false,
+        "outstanding_gaps": [
+          "Develop an understanding of the experiments confirming quantum entanglement"
+        ]
+      }
+    },
+    {
+      "name": "missing_comma_between_objects",
+      "description": "Missing comma between array objects",
+      "schema": "select_tools",
+      "input": "{\n  \"schema_version\": 1,\n  \"tasks\": [\n    {\n      \"gap\": \"Experimental detection techniques\",\n      \"agent\": \"WebSearchAgent\",\n      \"query\": \"quantum entanglement detection\",\n      \"entity_website\": null\n    }\n    {\n      \"gap\": \"Scale of systems verification\",\n      \"agent\": \"SiteCrawlerAgent\",\n      \"query\": \"entanglement verification scale\",\n      \"entity_website\": \"https://physicsworld.com\"\n    }\n  ]\n}",
+      "expected_repair": {
+        "schema_version": 1,
+        "tasks": [
+          {
+            "gap": "Experimental detection techniques",
+            "agent": "WebSearchAgent", 
+            "query": "quantum entanglement detection",
+            "entity_website": null
+          },
+          {
+            "gap": "Scale of systems verification",
+            "agent": "SiteCrawlerAgent",
+            "query": "entanglement verification scale", 
+            "entity_website": "https://physicsworld.com"
+          }
+        ]
+      }
+    },
+    {
+      "name": "unquoted_url_and_markdown_fences",
+      "description": "URL missing quotes and wrapped in markdown",
+      "schema": "select_tools", 
+      "input": "```json\n{\n  \"schema_version\": 1,\n  \"tasks\": [\n    {\n      \"gap\": \"Modern quantum applications\",\n      \"agent\": \"SiteCrawlerAgent\",\n      \"query\": \"quantum computing applications\",\n      \"entity_website\": https://www.ibm.com/quantum\n    }\n  ]\n}\n```",
+      "expected_repair": {
+        "schema_version": 1,
+        "tasks": [
+          {
+            "gap": "Modern quantum applications",
+            "agent": "SiteCrawlerAgent",
+            "query": "quantum computing applications",
+            "entity_website": "https://www.ibm.com/quantum"
+          }
+        ]
+      }
+    },
+    {
+      "name": "schema_version_typo",
+      "description": "Wrong field name (schema_tag instead of schema_version)",
+      "schema": "create_plan",
+      "input": "{\n  \"schema_tag\": 1,\n  \"report_title\": \"Understanding Quantum Entanglement\",\n  \"background_context\": \"Quantum entanglement is a phenomenon where particles become interconnected.\",\n  \"report_outline\": [\n    {\n      \"title\": \"Basic Principles\",\n      \"key_question\": \"What are the fundamental principles of quantum entanglement?\"\n    }\n  ]\n}",
+      "expected_repair": {
+        "schema_version": 1,
+        "report_title": "Understanding Quantum Entanglement",
+        "background_context": "Quantum entanglement is a phenomenon where particles become interconnected.",
+        "report_outline": [
+          {
+            "title": "Basic Principles",
+            "key_question": "What are the fundamental principles of quantum entanglement?"
+          }
+        ]
+      }
+    },
+    {
+      "name": "comment_injection",
+      "description": "Invalid comment syntax breaking JSON structure",
+      "schema": "select_tools",
+      "input": "{\n  \"schema_version\": 1,\n  \"tasks\": [\n    {\n      \"gap\": \"Historical experiments\",\n      \"agent\": \"SiteCrawlerAgent\",\n      --(https://physicsworld.com/article)\n      \"query\": \"Bell theorem experiments\",\n      \"entity_website\": \"https://www.physicsworld.com\"\n    }\n  ]\n}",
+      "expected_repair": {
+        "schema_version": 1,
+        "tasks": [
+          {
+            "gap": "Historical experiments",
+            "agent": "SiteCrawlerAgent",
+            "query": "Bell theorem experiments",
+            "entity_website": "https://www.physicsworld.com"
+          }
+        ]
+      }
+    }
+  ]
+}
