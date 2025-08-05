@@ -14,6 +14,10 @@ import pytest
 import os
 import asyncio
 from typing import List
+import traceback 
+from pprint import pprint 
+import json  
+
 
 from deep_researcher.tools.web_search import (
     SearchXNGClient, 
@@ -189,6 +193,7 @@ class TestWebSearchToolReal:
         for i, page in enumerate(result[:2]):
             print(f"  Page {i+1}: {page.title} - {len(page.text)} chars")
 
+# ========================================= UPDATE FOR LOGGING TO FIND THE ISSUE =========================================
 
 class TestSearchAgentReal:
     """Test search agent with real calls."""
@@ -196,51 +201,124 @@ class TestSearchAgentReal:
     async def test_search_agent_initialization(self, test_config):
         """Test that search agent initializes correctly."""
         search_agent = init_search_agent(test_config)
-        
+
         assert isinstance(search_agent, ResearchAgent)
         assert search_agent.name == "WebSearchAgent"
         assert len(search_agent.tools) == 1, "Should have one tool (web_search)"
-        
+
         print("Search agent initialized successfully")
+        print("=== Initialization Diagnostics ===")
+        print("Agent name:", search_agent.name)
+        print("Tools attached:", [getattr(t, "name_override", None) or getattr(t, "name", None) or getattr(t, "__name__", None) for t in search_agent.tools])
+        for i, tool in enumerate(search_agent.tools):
+            print(f"--- Tool {i} introspection ---")
+            print("repr:", repr(tool))
+            print("dir(tool):", [attr for attr in dir(tool) if not attr.startswith("_")])
+            attrs = {}
+            for attr in ("name_override", "name", "__name__", "func"):
+                if hasattr(tool, attr):
+                    val = getattr(tool, attr)
+                    # if callable and has __name__, show that
+                    if callable(val) and hasattr(val, "__name__"):
+                        val = getattr(val, "__name__", str(val))
+                    attrs[attr] = val
+            pprint(attrs)
+        print("=== End Initialization Diagnostics ===")
 
     async def test_search_agent_execution(self, test_config):
         """Test search agent execution with real query."""
+        # Force function calling for clarity
+        os.environ["ENABLE_FUNCTION_CALLING"] = "true"
+
         search_agent = init_search_agent(test_config)
-        
+
+        # Debug: env state
+        print("=== Pre-Run Diagnostics ===")
+        print("ENABLE_FUNCTION_CALLING:", os.getenv("ENABLE_FUNCTION_CALLING"))
+        print("Search provider:", test_config.search_provider if hasattr(test_config, "search_provider") else getattr(search_agent, "search_provider", None))
+        print("Attached tools and their metadata:")
+        for i, tool in enumerate(search_agent.tools):
+            print(f"Tool #{i}: {tool}")
+            candidate_names = []
+            if hasattr(tool, "name_override") and getattr(tool, "name_override", None):
+                candidate_names.append(getattr(tool, "name_override"))
+            if hasattr(tool, "name"):
+                candidate_names.append(getattr(tool, "name"))
+            if hasattr(tool, "__name__"):
+                candidate_names.append(getattr(tool, "__name__", ""))
+            if hasattr(tool, "func") and hasattr(tool.func, "__name__"):
+                candidate_names.append(tool.func.__name__)
+            print("  Candidate names:", candidate_names)
+            print("  Full dir():", [attr for attr in dir(tool) if not attr.startswith("_")])
+        print("=== End Pre-Run Diagnostics ===")
+
         # Create a simple task for the agent
         task_prompt = """
         Query: "What is reinforcement learning?"
         Gap: "Need basic explanation of reinforcement learning concepts"
         Entity: null
         """
-        
+
         print("Testing search agent with reinforcement learning query...")
-        
-        # Run the search agent
-        result = await ResearchRunner.run(search_agent, task_prompt)
-        
+        try:
+            # Run the search agent
+            result = await ResearchRunner.run(search_agent, task_prompt)
+        except Exception as e:
+            print("=== Exception during ResearchRunner.run ===")
+            traceback.print_exc()
+            pytest.fail(f"ResearchRunner.run raised an unexpected exception: {e}")
+
+        # Dump raw run result for inspection
+        print("=== Post-Run Raw Result ===")
+        try:
+            # Some RunResult shapes expose attributes differently
+            if hasattr(result, "final_output"):
+                print("Final output (raw):")
+                pprint(result.final_output)
+            if hasattr(result, "raw_responses"):
+                print("Raw responses:")
+                for idx, resp in enumerate(result.raw_responses or []):
+                    print(f"  Response #{idx}: {resp}")
+                    # attempt to introspect fields
+                    if hasattr(resp, "output"):
+                        print("    resp.output:", resp.output)
+                    if hasattr(resp, "usage"):
+                        print("    resp.usage:", resp.usage)
+                    if hasattr(resp, "referenceable_id"):
+                        print("    resp.id:", resp.referenceable_id)
+        except Exception:
+            print("Error dumping raw result:", traceback.format_exc())
+        print("=== End Post-Run Raw Result ===")
+
         # The agent should return structured output with research findings
         assert result is not None, "Agent should return a result"
-        
+
         # Try to get the final output
         try:
-            # The exact structure depends on the agent's output type
-            final_output = result.final_output_as(dict) if hasattr(result, 'final_output_as') else str(result)
-            print(f"Search agent completed successfully")
-            print(f"Result type: {type(final_output)}")
-            
-            if isinstance(final_output, dict):
-                if 'output' in final_output:
-                    print(f"Output length: {len(final_output['output'])} characters")
-                if 'sources' in final_output:
-                    print(f"Sources: {len(final_output['sources'])} found")
-            else:
-                print(f"Result: {str(final_output)[:200]}...")
-                
-        except Exception as e:
-            print(f"Result structure: {result}")
-            print(f"Note: Could not parse structured output: {e}")
+            final_output = result.final_output_as(dict) if hasattr(result, "final_output_as") else result.final_output
+            print("Search agent completed successfully")
+            print("Result type:", type(final_output))
 
+            if isinstance(final_output, dict):
+                if "output" in final_output:
+                    print(f"Output length: {len(final_output['output'])} characters")
+                else:
+                    print("Missing 'output' key in final_output")
+                if "sources" in final_output:
+                    print(f"Sources: {len(final_output['sources'])} found -> {final_output.get('sources')}")
+                else:
+                    print("Missing 'sources' key in final_output")
+            else:
+                print("Final output (as string):", str(final_output)[:500])
+        except Exception as e:
+            print("=== Failed to parse structured output ===")
+            print("Result object repr:", repr(result))
+            traceback.print_exc()
+            pytest.fail(f"Could not parse structured output: {e}")
+
+
+
+# ========================================= UPDATE FOR LOGGING TO FIND THE ISSUE =========================================
 
 class TestCrawlAgentReal:
     """Test crawl agent with real calls."""

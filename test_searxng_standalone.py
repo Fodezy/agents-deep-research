@@ -61,11 +61,11 @@ async def test_direct_searxng_api():
                     return True
                 else:
                     error_text = await response.text()
-                    print(f"❌ HTTP Error {response.status}: {error_text}")
+                    print(f"  HTTP Error {response.status}: {error_text}")
                     return False
                     
     except Exception as e:
-        print(f"❌ Exception: {type(e).__name__}: {e}")
+        print(f"  Exception: {type(e).__name__}: {e}")
         return False
 
 async def test_searxng_client():
@@ -110,7 +110,7 @@ async def test_searxng_client():
         
     except Exception as e:
         import traceback
-        print(f"❌ Exception: {type(e).__name__}: {e}")
+        print(f"  Exception: {type(e).__name__}: {e}")
         print(f"📋 Full traceback:\n{traceback.format_exc()}")
         return False
 
@@ -147,7 +147,7 @@ async def test_web_search_tool():
         print(f"🔎 Search completed. Got {len(snippets)} snippet(s)")
         
         if not snippets:
-            print(f"❌ No search results found")
+            print(f"  No search results found")
             return False
         
         # Test scraping
@@ -156,7 +156,7 @@ async def test_web_search_tool():
         print(f"✅ Scraping completed. Scraped {len(results)} pages successfully")
         
         if not results:
-            print(f"❌ No pages could be scraped")
+            print(f"  No pages could be scraped")
             return False
         
         # Show results
@@ -172,7 +172,7 @@ async def test_web_search_tool():
             
     except Exception as e:
         import traceback
-        print(f"❌ Exception: {type(e).__name__}: {e}")
+        print(f"  Exception: {type(e).__name__}: {e}")
         print(f"📋 Full traceback:\n{traceback.format_exc()}")
         return False
 
@@ -197,10 +197,10 @@ async def test_configuration():
                     print(f"✅ SearchXNG is reachable at http://127.0.0.1:8888")
                     return True
                 else:
-                    print(f"❌ SearchXNG returned status {response.status}")
+                    print(f"  SearchXNG returned status {response.status}")
                     return False
     except Exception as e:
-        print(f"❌ Cannot reach SearchXNG: {e}")
+        print(f"  Cannot reach SearchXNG: {e}")
         print(f"💡 Make sure SearchXNG docker container is running:")
         print(f"   docker-compose up -d")
         return False

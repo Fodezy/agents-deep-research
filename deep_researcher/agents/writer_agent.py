@@ -41,7 +41,8 @@ GUIDELINES:
 """
 
 def init_writer_agent(config: LLMConfig) -> ResearchAgent:
-    selected_model = config.main_model
+    from .utils.model_role_registry import ModelRole
+    selected_model = config.get_model_for_role(ModelRole.WRITER)
 
     return ResearchAgent(
         name="WriterAgent",

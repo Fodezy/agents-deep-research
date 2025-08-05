@@ -10,7 +10,8 @@ The Agent then:
 4. Returns the formatted summary as a string
 """
 
-from ...tools import crawl_website
+from agents import function_tool
+from ...tools.crawl_website import crawl_website
 from . import ToolAgentOutput
 from ...llm_config import LLMConfig, model_supports_structured_output
 from ..baseclass import ResearchAgent
@@ -24,14 +25,16 @@ You are the SiteCrawlerAgent. You receive an AgentTask containing:
 - query: (optional) a short query string
 - entity_website: the URL to start crawling
 
-Your job is to call the crawler exactly once. You MUST respond with exactly this JSON—nothing else:
+Your task is to crawl the website and return relevant information. You have access to the crawl_website tool.
+
+You MUST respond with valid JSON in exactly this format:
 
 {
-  "name": "crawl_website",
-  "parameters": {
-    "starting_url": "<entity_website>"
-  }
+  "output": "A summary of relevant information found on the website that addresses the knowledge gap",
+  "sources": ["https://url1.com", "https://url2.com", "..."]
 }
+
+Use the crawl_website tool to gather information from the target website, then summarize the key findings that address the knowledge gap.
 """
 
 
@@ -40,16 +43,30 @@ def init_crawl_agent(config: LLMConfig) -> ResearchAgent:
 
     # Add hierarchical summariser for large crawled content
     summariser = HierarchicalSummariser(
-        fast_model=config.fast_model,
+        fast_model=config.main_model,  # Use main model as specified in requirements
         slow_model=config.main_model,
         chunk_size=1000,  # Larger chunks for crawled content
         overlap=150
     )
 
+    # Create a proper function to decorate
+    def crawl_website_func(url: str):
+        """Crawl a website starting from a given URL and return scraped content."""
+        return crawl_website(url)
+
+    crawl_tool = function_tool(
+        name_override="crawl_website",
+        description_override="Crawl a website starting from a given URL and return scraped content."
+    )(crawl_website_func)
+    
+    # Expose inner function for tests
+    crawl_tool.func = crawl_website_func
+    crawl_tool.__name__ = crawl_website_func.__name__
+    
     return ResearchAgent(
         name="SiteCrawlerAgent",
         instructions=INSTRUCTIONS,
-        tools=[crawl_website],
+        tools=[crawl_tool],
         model=selected_model,
         summariser=summariser,
         output_type=ToolAgentOutput if model_supports_structured_output(selected_model) else None,

@@ -11,39 +11,41 @@ from ..utils.hierarchical_summariser import HierarchicalSummariser
 INSTRUCTIONS = """
 You are the WebSearchAgent. You receive an AgentTask containing:
 - gap: the knowledge gap to fill  
-- query: a 3–6 word search string  
+- query: a 3-6 word search string  
 - entity_website: (optional) a domain to bias your search
 
-When you respond, you MUST emit exactly one function call in JSON—no prose, no summaries—in this format:
+Your task is to perform a web search and return the results. You have access to the web_search tool.
+
+IMPORTANT: You must first use the web_search tool to find information, then provide your final response.
+
+After using the web_search tool, you MUST respond with valid JSON in exactly this format:
 
 {
-  "name": "web_search",
-  "parameters": {
-    "query": "<your 3–6 word search here>"
-  }
+  "output": "A summary of your search findings that addresses the knowledge gap",
+  "sources": ["https://url1.com", "https://url2.com", "..."]
 }
 
-That will trigger the actual `web_search` tool. Do NOT write anything else.
+Steps:
+1. Use the web_search tool with the provided query
+2. Analyze the search results
+3. Write a summary that addresses the knowledge gap
+4. List the source URLs from the search results
+5. Format your response as the JSON above
 """
 
 
 
 def init_search_agent(config: LLMConfig) -> ResearchAgent:
     # choose the right model & search provider
-    print(f"[init_search_agent] search_provider={config.search_provider!r}, fast_model={config.fast_model!r}", flush=True)
-
-    selected_model = config.fast_model
+    from ..utils.model_role_registry import ModelRole
+    selected_model = config.get_model_for_role(ModelRole.SUMMARISER)
+    print(f"[init_search_agent] search_provider={config.search_provider!r}, summariser_model={selected_model!r}", flush=True)
     provider_base_url = get_base_url(selected_model)
     if config.search_provider == "openai" and 'openai.com' not in provider_base_url:
         raise ValueError(f"SEARCH_PROVIDER='openai' but using non-OpenAI model {selected_model}")
-    if config.search_provider == "openai":
-        web_search_tool = function_tool(
-            name="web_search",
-            description="Perform a web search for a given query and return scraped results."
-        )(create_web_search_tool(config))
-    else:
-        print(f"[init_search_agent] using custom web search tool for {config.search_provider!r}", flush=True)
-        web_search_tool = create_web_search_tool(config)
+    
+    # Create the web search tool (already wrapped as FunctionTool)
+    web_search_tool = create_web_search_tool(config)
 
     # Add hierarchical summariser for large content
     summariser = HierarchicalSummariser(
@@ -53,7 +55,7 @@ def init_search_agent(config: LLMConfig) -> ResearchAgent:
         overlap=100
     )
 
-    print(f"[init_search_agent] registered tool: {web_search_tool.__name__!r}", flush=True)
+    print(f"[init_search_agent] registered tool: {getattr(web_search_tool, 'name', 'web_search')!r}", flush=True)
     return ResearchAgent(
         name="WebSearchAgent",
         instructions=INSTRUCTIONS,

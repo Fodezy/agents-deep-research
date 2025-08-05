@@ -1,20 +1,27 @@
-# Slice X: **Structured-Agents Overhaul** – Kick-off Plan
+# Slice X: **Structured-Agents Overhaul** – Updated Plan
 
-*(Outlines + JSON Validation/Auto-Repair + Hierarchical Summarisation + Model-Role Registry)*
+*(Tool Execution Pipeline Fixed + 4-Model Architecture + Outlines + Structured Summarization)*
 
 ---
 
 ## 1  Executive Summary & Core Objective
 
-The current **agents-deep-research** pipeline frequently crashes on malformed JSON, chokes on long webpages, and makes model swaps painful.
-This slice will ship a *structured-agents overhaul* that introduces:
+**BREAKTHROUGH**: Tool execution pipeline issue **RESOLVED** through 4-model architecture approach. Local models like `hermes3:8b` don't support function calling, but dedicated `TOOL_CALLING_MODEL` (`Salesforce_Llama-xLAM-2-8b-fc-r-GGUF`) produces proper structured function calls.
 
-* **Outlines** for native function-style JSON generation.
-* A **ValidationWrapper** with single-retry auto-repair and observability.
-* A **Hierarchical Summariser** (chunk → fast model → slow model) embedded in search/crawl agents.
-* A **Model-Role Registry** with Hugging Face tags for clear benchmarking.
+**Validated Success Path:**
+```
+TOOL_CALLING_MODEL → ResponseFunctionToolCall → functions count: 1 → Tool Executed ✅
+hermes3:8b → ResponseOutputMessage → functions count: 0 → No Tools ❌
+```
 
-**Business value:** 98 %+ valid outputs, zero `OutputParserError` in regression suite, and the ability to ingest 25 k-token pages—unlocking reliable, low-cost research on local models.
+This slice now focuses on completing the structured-agents architecture:
+
+* **4-Model Role Separation** (PLANNER, TOOL_CALLING, SUMMARISER, WRITER) - **PRIORITY 1**
+* **Structured Summarization** via Outlines (currently returns prose, needs JSON)
+* **ValidationWrapper** for auto-repair and observability
+* **Model-Role Registry** enforcement with runtime assertions
+
+**Business value:** 98%+ valid outputs, zero `OutputParserError`, functional tool execution, and reliable 4-model local architecture.
 
 Success KPIs (launch +30 days):
 
@@ -80,13 +87,13 @@ Success KPIs (launch +30 days):
 
 ## 4  Phased Implementation Plan
 
-| Phase                                      | Sprint(s) | Deliverables                                                                                                                            |
-| ------------------------------------------ | --------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| **1 — Foundations**                        | 1         | Outlines lib installed; base function schemas (`create_plan`, `select_tools`, `report_gaps`); ValidationWrapper skeleton; metrics hooks |
-| **2 — Search & Crawl Refactor**            | 1         | Token chunker util; fast-summariser loop; slow-model aggregator; integrated into WebSearch & Crawl agents                               |
-| **3 — Core Agent Conversion**              | 1         | PlannerAgent, ToolSelectorAgent, KnowledgeGapAgent migrated to Outlines; legacy regex removed                                           |
-| **4 — Model Registry & Writer Guardrails** | 0.5       | Registry w/ tags, CLI switch; WriterAgent length/markdown guard                                                                         |
-| **5 — QA & Roll-out**                      | 1         | Regression suite (quantum query); latency benchmark; docs & migration guide                                                             |
+| Phase                                        | Sprint(s) | Deliverables                                                                                                                              |
+| -------------------------------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **1 — Model-Role Registry (PRIORITY)**      | 0.5       | 4-model role enforcement (PLANNER/TOOL_CALLING/SUMMARISER/WRITER); runtime assertions; config validation                                |
+| **2 — Outlines Core Agents**                | 1         | ToolSelector, Planner, KnowledgeGap migrated to Outlines; structured function schemas                                                    |
+| **3 — Structured Summarization**            | 1         | Summariser produces JSON not prose; Outlines-based `summarize_content` function; schema validation                                       |
+| **4 — ValidationWrapper & Observability**   | 1         | Auto-repair wrapper for all structured outputs; metrics hooks; retry logic                                                               |
+| **5 — QA & Regression Protection**          | 1         | Both clean (structured calls) and degraded (fallback) path tests; benchmark suite; migration docs                                       |
 
 *Total ≈ 4.5 sprints (5 calendar weeks).*
 
@@ -94,35 +101,54 @@ Success KPIs (launch +30 days):
 
 ## 5  Initial Backlog (Ticket-Ready Stories)
 
-### Epic — Structured-Agents Overhaul
+### Epic — Structured-Agents Overhaul *(Updated Priorities)*
 
-| ID            | Title                              | Type  | Description                                                  | AC (summary)                              | Depends  |
-| ------------- | ---------------------------------- | ----- | ------------------------------------------------------------ | ----------------------------------------- | -------- |
-| **HYBRID-01** | Failure analysis & schema defs     | Story | Catalogue malformed samples, finalise JSON schemas           | Doc of patterns; `schemas/` v1 JSON files | —        |
-| **HYBRID-02** | ValidationWrapper + Observability  | Story | Build async validator, auto-repair, metrics                  | Pass unit suite; emits counters           | 01       |
-| **HYBRID-03** | Token chunker util                 | Story | Implement `split_on_tokens` (≈800) with offset map           | 100 % cov; handles >25 k tokens           | 02       |
-| **HYBRID-04** | HierarchicalSummariser integration | Story | Fast model per-chunk, slow aggregation, JSON output          | Summarises Wikipedia 30 k tokens <30 s    | 03       |
-| **HYBRID-05** | Outlines refactor — ToolSelector   | Story | Replace prompt f-string with `select_tools` function         | 98 % valid JSON in tests                  | 02       |
-| **HYBRID-06** | Outlines refactor — Planner        | Story | Implement `create_plan` function; update IterativeResearcher | Plan JSON passes schema                   | 05       |
-| **HYBRID-07** | Outlines refactor — KnowledgeGap   | Story | `report_gaps` function + few-shot                            | Gap JSON valid; retry <2 %                | 06       |
-| **HYBRID-08** | Model-Role Registry & Tag checker  | Story | YAML registry + assert correct HF tag                        | Fails fast on wrong tag                   | 02       |
-| **HYBRID-09** | WriterAgent guardrails             | Story | Enforce max length & strip stray markdown                    | Writer passes proofread tests             | 06       |
-| **HYBRID-10** | E2E benchmark & docs               | Story | Run quantum query; latency + error metrics; write guide      | All KPIs met; guide published             | 07,08,09 |
+**HIGH PRIORITY (Do Now)**
+
+| ID            | Title                                      | Type  | Description                                                    | AC (summary)                                     | Depends |
+| ------------- | ------------------------------------------ | ----- | -------------------------------------------------------------- | ------------------------------------------------ | ------- |
+| **HYBRID-08** | Model-Role Registry & Tag Checker         | Story | Codify 4-model roles (PLANNER/TOOL_CALLING/SUMMARISER/WRITER) | Runtime assertions pass; config validates roles | —       |
+| **HYBRID-05** | Outlines refactor — ToolSelector           | Story | Already in progress; structured tool selection JSON           | 98% valid JSON; no function call parse errors   | —       |
+| **HYBRID-06** | Outlines refactor — Planner                | Story | Structured planning output via Outlines                       | Plan JSON passes schema validation               | 05      |
+| **HYBRID-04a**| Outlines-based Summariser (structured output) | Story | **NEW**: Summariser must emit JSON not prose using Outlines   | Structured summary with sources array           | 08      |
+
+**SECONDARY PRIORITY**
+
+| ID            | Title                              | Type  | Description                                                  | AC (summary)                              | Depends     |
+| ------------- | ---------------------------------- | ----- | ------------------------------------------------------------ | ----------------------------------------- | ----------- |
+| **HYBRID-07** | Outlines refactor — KnowledgeGap   | Story | `report_gaps` function with structured output                | Gap JSON valid; retry <2%                | 06          |
+| **HYBRID-02** | ValidationWrapper + Observability  | Story | **UPDATED**: Wrap Outlines outputs with validation/repair   | Auto-repair 80%+ malformed cases         | 04a,05,06   |
+| **HYBRID-09** | WriterAgent guardrails             | Story | Final output polishing and length enforcement                | Writer passes quality tests              | 06          |
+| **HYBRID-10** | E2E benchmark & docs               | Story | Regression tests for both clean + degraded function paths   | All KPIs met; migration guide published  | 07,08,09    |
+
+**COMPLETED/IN-FLIGHT** *(Reference Only)*
+- HYBRID-01: Schema definitions (completed)
+- HYBRID-03: Token chunker (completed) 
+- HYBRID-04: Hierarchical summarizer base (completed)
 
 ---
 
 ## 6  Definition of Done (DoD)
 
-* All JSON-emitting agents generate via Outlines with versioned schemas.
-* ValidationWrapper auto-repairs ≥ 80 % of synthetic malformed cases; zero `OutputParserError` on regression suite.
-* Search & Crawl agents summarise a 25 k-token page without OOM or timeout.
-* End-to-end “quantum entanglement” run completes on local model stack.
-* KPI targets hit (Section 1).
-* CI includes schema regression tests & latency benchmark.
-* Migration guide, troubleshooting, and model-tag matrix documented.
+**UPDATED Success Criteria:**
+
+* **4-Model Architecture**: TOOL_CALLING_MODEL produces structured function calls (not plaintext)
+* **Function Call Pipeline**: `ResponseFunctionToolCall` → `functions count: 1` → Tools execute successfully  
+* **Structured Summarization**: Summariser emits JSON with `{output, sources}` structure (not prose)
+* **Outlines Integration**: Core agents (ToolSelector, Planner, KnowledgeGap) use Outlines functions
+* **ValidationWrapper**: Auto-repairs ≥ 80% of malformed cases; zero `OutputParserError` on regression
+* **Regression Coverage**: Tests for both clean (structured) and degraded (fallback) function call paths
+* **End-to-End Validation**: "Quantum entanglement" query completes with tool execution + structured output
+* **KPI Targets**: Hit metrics from Section 1
+* **Documentation**: Migration guide includes 4-model setup and troubleshooting
 
 ---
 
 ### 📌 Next Action
 
-Kick-off **HYBRID-01** (failure analysis & schema definitions) and schedule a design-review meeting at sprint start + 2 days.
+**IMMEDIATE**: Kick-off **HYBRID-08** (Model-Role Registry) to formalize the 4-model architecture that was validated in testing. This becomes the foundation for all subsequent structured agent work.
+
+**DESIGN DECISIONS NEEDED**:
+1. Summariser schema: Simple `{summary, sources}` or rich `{output, key_findings, confidence, sources}`?
+2. Model assignment: Which model handles summarization in 4-model split?
+3. ValidationWrapper: Before or after downstream agents receive summariser output?

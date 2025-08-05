@@ -3,6 +3,9 @@ import json
 import os
 import ssl
 from typing import List, Optional, Union
+import logging 
+logger = logging.getLogger(__name__)
+
 
 import aiohttp
 from agents import function_tool
@@ -52,7 +55,6 @@ def create_web_search_tool(config: LLMConfig):
     else:
         raise ValueError(f"Invalid search provider: {config.search_provider}")
     
-    @function_tool
     async def web_search(query: str) -> Union[List[ScrapeResult], str]:
         print(f"[web_search] Starting search for query: {query!r}", flush=True)
         try:
@@ -89,7 +91,20 @@ def create_web_search_tool(config: LLMConfig):
 
     # ensure the tool has a stable name
     web_search.__name__ = "web_search"
-    return web_search
+    web_search.name = "web_search"  # Add .name attribute for agents framework
+    
+    # For tests that expect a FunctionTool wrapper, create one
+    from agents import function_tool
+    web_search_tool = function_tool(
+        name_override="web_search",
+        description_override="Perform a web search for a given query and return scraped results."
+    )(web_search)
+    
+    # Expose the underlying function for tests
+    web_search_tool.func = web_search
+    web_search_tool.__name__ = web_search.__name__
+    
+    return web_search_tool
 
 
 # ------- FILTER AGENT -------
@@ -103,16 +118,42 @@ Return JSON in this exact format:
   ]
 }
 """
-
+# ===================== ROBUST LOGGING =====================
 def init_filter_agent(config: LLMConfig) -> ResearchAgent:
+    logger.debug("Initializing filter agent with config: %s", {
+        "reasoning_model_provider": getattr(config, "reasoning_model", None),
+        "search_provider": getattr(config, "search_provider", None),
+    })
     selected_model = config.reasoning_model
-    return ResearchAgent(
-        name="SearchFilterAgent",
-        instructions=FILTER_AGENT_INSTRUCTIONS,
-        model=selected_model,
-        output_type=(SearchResults if model_supports_structured_output(selected_model) else None),
-        output_parser=(create_type_parser(SearchResults) if not model_supports_structured_output(selected_model) else None),
-    )
+
+    supports_structured = model_supports_structured_output(selected_model)
+    logger.debug("Selected reasoning model: %r", selected_model)
+    logger.debug("Model supports structured output: %s", supports_structured)
+
+    output_type = SearchResults if supports_structured else None
+    output_parser = None if supports_structured else create_type_parser(SearchResults)
+    if supports_structured:
+        logger.debug("Using structured output for SearchResults.")
+    else:
+        logger.debug("Using custom output_parser for SearchResults.")
+
+    try:
+        agent = ResearchAgent(
+            name="SearchFilterAgent",
+            instructions=FILTER_AGENT_INSTRUCTIONS,
+            model=selected_model,
+            output_type=output_type,
+            output_parser=output_parser,
+        )
+        logger.info("Filter agent initialized: name=%s, output_type=%s, has_parser=%s",
+                    agent.name,
+                    getattr(output_type, "__name__", None),
+                    bool(output_parser))
+        return agent
+    except Exception as e:
+        logger.error("Failed to initialize filter agent: %s", e, exc_info=True)
+        raise
+# ===================== ROBUST LOGGING =====================
 
 
 # ------- UNDERLYING SEARCH CLIENTS -------
@@ -185,7 +226,7 @@ class SearchXNGClient:
         try:
             async with aiohttp.ClientSession(connector=connector) as session:
                 params = {"q": query, "format": "json"}
-                async with session.get(self.host, params=params) as response:
+                async with await session.get(self.host, params=params) as response:
                     print(f"[SearchXNGClient.search] HTTP Response Status: {response.status}", flush=True)
                     
                     if response.status != 200:
@@ -255,10 +296,10 @@ async def scrape_urls(items: List[WebpageSnippet]) -> List[ScrapeResult]:
 
 
 async def fetch_and_process_url(session: aiohttp.ClientSession, item: WebpageSnippet) -> ScrapeResult:
-    print(f"[fetch_and_process_url] → {item.url}")
+    print(f"[fetch_and_process_url]   {item.url}")
     # skip binary or document URLs
     if any(item.url.lower().endswith(ext) for ext in (".pdf", ".doc", ".jpg", ".png")):
-        print(f"[fetch_and_process_url]   ✋ skipped (binary ext)")
+        print(f"[fetch_and_process_url] skipped (binary ext)")
         return ScrapeResult(
             url=item.url,
             title=item.title,
@@ -267,7 +308,8 @@ async def fetch_and_process_url(session: aiohttp.ClientSession, item: WebpageSni
         )
 
     try:
-        async with session.get(item.url, timeout=8) as resp:
+        resp = await session.get(item.url, timeout=8)
+        async with resp:
             print(f"[fetch_and_process_url]   ← HTTP {resp.status}")
             if resp.status != 200:
                 return ScrapeResult(
@@ -278,7 +320,7 @@ async def fetch_and_process_url(session: aiohttp.ClientSession, item: WebpageSni
                 )
             html = await resp.text()
     except Exception as e:
-        print(f"[fetch_and_process_url]   ❌ Exception {e!s}")
+        print(f"[fetch_and_process_url]     Exception {e!s}")
         return ScrapeResult(
             url=item.url,
             title=item.title,
@@ -303,7 +345,7 @@ def html_to_text(html: str) -> str:
 
 
 def is_valid_url(url: str) -> bool:
-    # filter out obvious non‐HTML resources
+    # filter out obvious non HTML resources
     blocked = [
         ".pdf", ".doc", ".xls", ".ppt", ".zip", ".rar",
         ".png", ".jpg", ".jpeg", ".gif", ".mp3", ".mp4"

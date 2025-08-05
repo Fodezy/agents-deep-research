@@ -45,6 +45,7 @@ def create_type_parser(model: type[BaseModel]) -> Callable[[str], BaseModel]:
     """
     def parser(raw: str) -> BaseModel:
         last_err = None
+        found_function_call = False
 
         for blob in find_all_json_in_string(raw):
             # 1) Attempt to parse JSON directly
@@ -79,9 +80,9 @@ def create_type_parser(model: type[BaseModel]) -> Callable[[str], BaseModel]:
             # Wrap bare task lists into the dict the AgentSelectionPlan expects
             if isinstance(data, list) and "tasks" in model.model_fields:
                 data = {"tasks": data}
-            # ────────────────────────────────────────────────────────────────────
+            # -----------------------------------------------------------------------
 
-            # —————————————————————————————————————————————————————————
+            # ---------------------------------------------------------------
             # Normalize root keys for PlannerAgent
             if "title" in data and "report_title" not in data:
                 data["report_title"] = data.pop("title")
@@ -116,7 +117,7 @@ def create_type_parser(model: type[BaseModel]) -> Callable[[str], BaseModel]:
                         for sec in sections
                     ]
 
-            # **NEW** normalize dict-style report_outline → list
+            # **NEW** normalize dict-style report_outline   list
             if "report_outline" in data and isinstance(data["report_outline"], dict):
                 outline_dict = data.pop("report_outline")
                 normalized = []
@@ -132,10 +133,15 @@ def create_type_parser(model: type[BaseModel]) -> Callable[[str], BaseModel]:
             # Normalize keys for AgentSelectionPlan
             if "sections" in data and "tasks" not in data:
                 data["tasks"] = data.pop("sections")
-            # —————————————————————————————————————————————————————————
+            # ---------------------------------------------------------------
 
             # 2) Skip pure JSON-schema blobs
             if isinstance(data, dict) and all(k in data for k in ("properties", "required", "type")):
+                continue
+            
+            # 2b) Skip function call JSON (has "name" and "arguments"/"parameters")
+            if isinstance(data, dict) and "name" in data and ("arguments" in data or "parameters" in data):
+                found_function_call = True
                 continue
 
             # 3) Try direct Pydantic validation
@@ -159,9 +165,16 @@ def create_type_parser(model: type[BaseModel]) -> Callable[[str], BaseModel]:
                         last_err = e
                         continue
 
-        raise OutputParserError(
-            f"Failed to parse and validate output as {model.__name__}",
-            raw
-        )
+        # Enhanced error message when only function call JSON was found
+        error_msg = f"Failed to parse and validate output as {model.__name__}"
+        if found_function_call:
+            import os
+            fc_enabled = os.getenv("ENABLE_FUNCTION_CALLING", "true").lower() in ("1", "true")
+            if not fc_enabled:
+                error_msg += ". Found function call JSON but ENABLE_FUNCTION_CALLING is disabled - tools may not have executed."
+            else:
+                error_msg += ". Found function call JSON but no valid output afterward - tool execution may have failed."
+        
+        raise OutputParserError(error_msg, raw)
 
     return parser

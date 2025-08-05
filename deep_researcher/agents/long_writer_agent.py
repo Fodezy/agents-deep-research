@@ -108,6 +108,57 @@ async def write_report(
     return final_draft
 
 
+def reformat_references(section_markdown: str, section_refs: list, all_refs: list) -> tuple:
+    """
+    Reformat references in section markdown to use global numbering.
+    
+    Args:
+        section_markdown: Markdown text with [N](url) citations
+        section_refs: List of references for this section like ["[1] url", "[2] url", ...]
+        all_refs: Accumulated list of all references from previous sections
+    
+    Returns:
+        Tuple of (updated_section_markdown, updated_all_refs)
+    """
+    # Extract URLs from section_refs to create URL to reference mapping
+    url_to_ref = {}
+    for ref in section_refs:
+        # Extract URL from "[N] url" format
+        match = re.match(r'\[(\d+)\] (.+)', ref)
+        if match:
+            url = match.group(2)
+            url_to_ref[url] = ref
+    
+    # Find all [N](url) patterns in the section markdown
+    citation_pattern = r'\[(\d+)\]\(([^)]+)\)'
+    
+    def replace_citation(match):
+        original_num = match.group(1)
+        url = match.group(2)
+        
+        # Check if this URL already exists in all_refs
+        existing_ref_num = None
+        for i, existing_ref in enumerate(all_refs):
+            if url in existing_ref:
+                existing_ref_num = i + 1
+                break
+        
+        if existing_ref_num:
+            # Use existing reference number
+            return f'[{existing_ref_num}]({url})'
+        else:
+            # Add new reference to all_refs
+            new_ref_num = len(all_refs) + 1
+            ref_entry = f'[{new_ref_num}] {url}'
+            all_refs.append(ref_entry)
+            return f'[{new_ref_num}]({url})'
+    
+    # Replace all citations with correct numbering
+    updated_markdown = re.sub(citation_pattern, replace_citation, section_markdown)
+    
+    return updated_markdown, all_refs
+
+
 def reformat_section_headings(section_markdown: str) -> str:
     # promote all headings to start at level 2
     if not section_markdown.strip():
@@ -119,6 +170,6 @@ def reformat_section_headings(section_markdown: str) -> str:
     adjust = 2 - first_level
     def repl(m):
         hashes, text = m.group(1), m.group(2)
-        new_level = max(2, len(hashes) + adjust)
+        new_level = max(1, len(hashes) + adjust)  # Changed minimum from 2 to 1
         return '#' * new_level + ' ' + text
     return re.sub(r'^(#+)\s(.+)$', repl, section_markdown, flags=re.MULTILINE)

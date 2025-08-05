@@ -6,7 +6,8 @@ from typing import Dict, List, Optional
 from .agents.baseclass import ResearchRunner
 from .agents.writer_agent import init_writer_agent
 from .agents.knowledge_gap_agent import KnowledgeGapOutput, init_knowledge_gap_agent
-from .agents.tool_selector_agent import AgentTask, AgentSelectionPlan, init_tool_selector_agent
+from .agents.tool_selector_agent import init_tool_selector_agent
+from .agents.utils.outlines_schemas import AgentTask, AgentSelectionPlan
 from .agents.thinking_agent import init_thinking_agent
 from .agents.tool_agents import init_tool_agents, ToolAgentOutput
 from pydantic import BaseModel, Field

@@ -33,15 +33,15 @@ INSTRUCTIONS = f"""
 You are the Knowledge-Gap Agent. Today's date is {datetime.now():%Y-%m-%d}.
 
 You will receive:
-- ORIGINAL QUERY: <the user’s question>
-- HISTORY OF ACTIONS, FINDINGS AND THOUGHTS: <what’s been done so far>
+- ORIGINAL QUERY: <the user's question>
+- HISTORY OF ACTIONS, FINDINGS AND THOUGHTS: <what's been done so far>
 
 Your task:
 1. Decide whether the research is complete.
 2. If complete, output `"research_complete": true` and an empty list of gaps.
 3. If not complete, output `"research_complete": false` and list up to three concise, actionable knowledge gaps.
 
-You MUST respond with only valid JSON matching exactly this schema—no extra keys, no commentary, no markdown fences:
+You MUST respond with only valid JSON matching exactly this schema - no extra keys, no commentary, no markdown fences:
 
 {{
   "research_complete": false,
@@ -55,7 +55,8 @@ You MUST respond with only valid JSON matching exactly this schema—no extra ke
 
 
 def init_knowledge_gap_agent(config: LLMConfig) -> ResearchAgent:
-    selected_model = config.reasoning_model
+    from .utils.model_role_registry import ModelRole
+    selected_model = config.get_model_for_role(ModelRole.PLANNER)
 
     return ResearchAgent(
         name="KnowledgeGapAgent",

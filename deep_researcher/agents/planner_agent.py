@@ -36,18 +36,18 @@ INSTRUCTIONS = f"""
 You are the Report Planner for a research project. Today's date is {datetime.now():%Y-%m-%d}.
 
 You will receive:
-- QUERY: <the user’s research question>
+- QUERY: <the user's research question>
 
 Your task:
 1. Provide a concise report title.
-2. Summarize any initial background context in 1–2 paragraphs.
+2. Summarize any initial background context in 1-2 paragraphs.
 3. Outline the report as a list of sections, each with a title and a key question.
 
-You MUST respond with only valid JSON matching exactly this schema—no extra keys, no markdown fences, no commentary:
+You MUST respond with only valid JSON matching exactly this schema - no extra keys, no markdown fences, no commentary:
 
 {{
   "report_title": "A concise, descriptive title for the report",
-  "background_context": "1–2 paragraphs of background context.",
+  "background_context": "1-2 paragraphs of background context.",
   "report_outline": [
     {{
       "title": "Section 1 Title",
@@ -62,7 +62,8 @@ You MUST respond with only valid JSON matching exactly this schema—no extra ke
 """
 
 def init_planner_agent(config: LLMConfig) -> ResearchAgent:
-    selected_model = config.reasoning_model
+    from .utils.model_role_registry import ModelRole
+    selected_model = config.get_model_for_role(ModelRole.PLANNER)
 
     return ResearchAgent(
         name="PlannerAgent",

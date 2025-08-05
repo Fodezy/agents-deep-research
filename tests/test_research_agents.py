@@ -16,12 +16,13 @@ from .config import \
     FAST_MODEL
 from deep_researcher import LLMConfig, ResearchRunner
 from deep_researcher.agents.knowledge_gap_agent import init_knowledge_gap_agent, KnowledgeGapOutput
-from deep_researcher.agents.long_writer_agent import init_long_writer_agent, LongWriterOutput, write_report, ReportDraft
+from deep_researcher.agents.long_writer_agent import init_long_writer_agent, write_report, ReportDraft
 from deep_researcher.agents.planner_agent import init_planner_agent, ReportPlan
 from deep_researcher.agents.proofreader_agent import init_proofreader_agent, ReportDraft, ReportDraftSection
 from deep_researcher.agents.writer_agent import init_writer_agent
 from deep_researcher.agents.thinking_agent import init_thinking_agent
-from deep_researcher.agents.tool_selector_agent import init_tool_selector_agent, AgentSelectionPlan, AgentTask
+from deep_researcher.agents.tool_selector_agent import init_tool_selector_agent
+from deep_researcher.agents.utils.outlines_schemas import AgentSelectionPlan, AgentTask
 
 # Configuration for LLMs
 config = LLMConfig(

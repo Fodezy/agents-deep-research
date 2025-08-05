@@ -11,20 +11,28 @@
     
     <Context>
         <ProjectOverviewFiles="User should @mention there project overview file">
-            - [@mention your_relevant_files.md]
-        </ProjectOverview>
-        <BusinessGoal>[Briefly describe the "why" behind this slice. What business metric or user problem are you trying to solve?]</BusinessGoal>
-        <TargetUsers>[Who is this feature for?]</TargetUsers>
-        <TeamComposition>[Describe the team. e.g., "1 PM, 1 Designer, 2 Frontend Devs, 2 Backend Devs, 1 QA."]</TeamComposition>
-        <TechStackConstraints>[Note the tech stack and any limitations.]</TechStackConstraints>
+            @README.md 
+            @TODO\HYBRID-05-Plan.md  -- this is the previous slice plan that this new slice builds upon.
+        </ProjectOverviewFiles>
+        <BusinessGoal>
+            Reduce failed tool executions and malformed outputs by formalizing a 4-model architecture with enforced roles and schema validation, thereby increasing researcher productivity and trust in the pipeline while decreasing time spent on debugging and rework. Key metrics: structural-validity rate ≥98%, zero OutputParserError incidents, and measurable uptime/reliability improvements for downstream research tasks.
+        </BusinessGoal>
+        <TargetUsers>
+            Internal research engineers and analysts using the agents-deep-research pipeline—specifically those authoring, reviewing, and consuming structured agent outputs (Planner, ToolSelector, Summariser, Writer) for knowledge extraction and synthesis.
+        </TargetUsers>
+        <TeamComposition>
+            1 full stack dev 
+        <TechStackConstraints>
+            Python-based agent framework with local LLMs (e.g., Qwen3, Llama-3 variants, hermes3) orchestrated via Ollama/llama.cpp; Dockerized deployments running across mixed Windows/Linux environments; limited GPU memory (RTX 4070, 27GB) requiring model loading / role assignment trade-offs; existing dependency pinning to avoid CI breakage; structured outputs must interoperate with Outlines function schemas and the asynchronous ValidationWrapper without deadlocks.
+        </TechStackConstraints>
     </Context>
     
     <InputFile instructions="User should @mention the file containing feature brief, user stories, or requirements document.">
-        [@mention your_requirements_file.md]
+        @TODO\SL-X.md
     </InputFile>
 
     <OutputFilePath="User should @mention the file containing feature brief, user stories, or requirements document.">
-        [@mention your_output_folder_.md]
+        @TODO\HYBRID-06-Plan.md 
     </OutputFilePath>
     
     <OutputStructure>

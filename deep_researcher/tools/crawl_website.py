@@ -6,8 +6,7 @@ from .web_search import scrape_urls, ssl_context, ScrapeResult, WebpageSnippet
 from agents import function_tool
 
 
-@function_tool
-async def crawl_website(starting_url: str) -> Union[List[ScrapeResult], str]:
+async def _crawl_website_fn(starting_url: str) -> Union[List[ScrapeResult], str]:
     """Crawls the pages of a website starting with the starting_url and then descending into the pages linked from there.
     Prioritizes links found in headers/navigation, then body links, then subsequent pages.
     
@@ -57,7 +56,8 @@ async def crawl_website(starting_url: str) -> Union[List[ScrapeResult], str]:
         connector = aiohttp.TCPConnector(ssl=ssl_context)
         async with aiohttp.ClientSession(connector=connector) as session:
             try:
-                async with session.get(url, timeout=30) as response:
+                response = await session.get(url, timeout=30)
+                async with response:
                     if response.status == 200:
                         return await response.text()
             except Exception as e:
@@ -107,3 +107,9 @@ async def crawl_website(starting_url: str) -> Union[List[ScrapeResult], str]:
     # Use scrape_urls to get the content for all discovered pages
     result = await scrape_urls(pages_to_scrape)
     return result
+
+# Export both raw function and decorated version
+crawl_website = _crawl_website_fn  # Raw function for direct use
+crawl_website_tool = function_tool(_crawl_website_fn)  # Decorated version for agents
+crawl_website_tool.func = _crawl_website_fn
+crawl_website_tool.__name__ = _crawl_website_fn.__name__
