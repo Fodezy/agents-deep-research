@@ -319,3 +319,202 @@ def extract_planner_params(input_data: Union[str, Dict[str, Any]]) -> Dict[str, 
     
     # Fallback for any other type
     return {"research_question": str(input_data), "context": ""}
+
+# Template system for SearchAgent and CrawlAgent
+def render_search_summary_prompt(
+    knowledge_gap: str,
+    search_query: str,  
+    search_results: str,
+    entity_website: str = None
+) -> str:
+    """Render structured search summary prompt for Outlines generation"""
+    current_date = datetime.now().strftime('%Y-%m-%d')
+    
+    website_context = f"\n\nEntity Website Context: {entity_website}" if entity_website else ""
+    
+    return f"""You are the WebSearchAgent for a research project. Today's date is {current_date}.
+
+Your task is to analyze web search results and create a comprehensive summary that addresses the specific knowledge gap.
+
+Knowledge Gap to Address: {knowledge_gap}
+Search Query Used: {search_query}{website_context}
+
+Search Results:
+{search_results}
+
+Analyze the search results and provide:
+1. A comprehensive summary (50-2000 characters) that directly addresses the knowledge gap
+2. List of source URLs from the search results (up to 20 URLs)
+3. Focus on factual accuracy and relevance to the knowledge gap
+
+Extract key findings, facts, and insights that help fill the knowledge gap. Synthesize information from multiple sources when available."""
+
+def render_legacy_search_summary_prompt(
+    knowledge_gap: str,
+    search_query: str,
+    search_results: str, 
+    entity_website: str = None
+) -> str:
+    """Render legacy search summary prompt with explicit JSON format"""
+    current_date = datetime.now().strftime('%Y-%m-%d')
+    
+    website_context = f"\n\nEntity Website Context: {entity_website}" if entity_website else ""
+    
+    return f"""You are the WebSearchAgent for a research project. Today's date is {current_date}.
+
+Knowledge Gap to Address: {knowledge_gap}
+Search Query Used: {search_query}{website_context}
+
+Search Results:
+{search_results}
+
+You MUST respond with valid JSON in exactly this format:
+
+{{
+  "output": "A comprehensive summary of search findings that addresses the knowledge gap (50-2000 characters)",
+  "sources": ["https://url1.com", "https://url2.com", "..."]
+}}
+
+Steps:
+1. Analyze the search results for information relevant to the knowledge gap
+2. Write a summary that directly addresses the gap with factual findings
+3. Extract and list the source URLs from the search results
+4. Format your response as the JSON above - no extra keys, no commentary"""
+
+def render_crawl_summary_prompt(
+    knowledge_gap: str,
+    target_website: str,
+    crawled_content: str,
+    search_query: str = None
+) -> str:
+    """Render structured crawl summary prompt for Outlines generation"""
+    current_date = datetime.now().strftime('%Y-%m-%d')
+    
+    query_context = f"\n\nSearch Query Context: {search_query}" if search_query else ""
+    
+    return f"""You are the SiteCrawlerAgent for a research project. Today's date is {current_date}.
+
+Your task is to analyze crawled website content and create a comprehensive summary that addresses the specific knowledge gap.
+
+Knowledge Gap to Address: {knowledge_gap}
+Target Website: {target_website}{query_context}
+
+Crawled Content:
+{crawled_content}
+
+Analyze the crawled content and provide:
+1. A comprehensive summary (50-2000 characters) that directly addresses the knowledge gap
+2. Source URL (the target website that was crawled)
+3. Focus on extracting relevant information that fills the knowledge gap
+
+Extract key findings, facts, and insights from the website content. Synthesize information effectively while maintaining accuracy."""
+
+def render_legacy_crawl_summary_prompt(
+    knowledge_gap: str,
+    target_website: str,
+    crawled_content: str,
+    search_query: str = None  
+) -> str:
+    """Render legacy crawl summary prompt with explicit JSON format"""
+    current_date = datetime.now().strftime('%Y-%m-%d')
+    
+    query_context = f"\n\nSearch Query Context: {search_query}" if search_query else ""
+    
+    return f"""You are the SiteCrawlerAgent for a research project. Today's date is {current_date}.
+
+Knowledge Gap to Address: {knowledge_gap}
+Target Website: {target_website}{query_context}
+
+Crawled Content:
+{crawled_content}
+
+You MUST respond with valid JSON in exactly this format:
+
+{{
+  "output": "A comprehensive summary of relevant information found on the website that addresses the knowledge gap (50-2000 characters)",
+  "sources": ["{target_website}"]
+}}
+
+Steps:
+1. Analyze the crawled content for information relevant to the knowledge gap
+2. Write a summary that directly addresses the gap with factual findings
+3. Include the target website URL as the source
+4. Format your response as the JSON above - no extra keys, no commentary"""
+
+# Parameter extraction for SearchAgent and CrawlAgent
+def extract_search_params(input_data: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
+    """Extract search parameters from AgentTask or other input formats"""
+    if isinstance(input_data, dict):
+        # Handle AgentTask dictionary or similar structured input
+        return {
+            "knowledge_gap": input_data.get("gap", input_data.get("knowledge_gap", "")),
+            "search_query": input_data.get("query", input_data.get("search_query", "")),
+            "entity_website": input_data.get("entity_website", input_data.get("website", None))
+        }
+    
+    if isinstance(input_data, str):
+        # Parse string input - could be simple query or structured format
+        # Look for AgentTask-like patterns first
+        if "gap:" in input_data or "query:" in input_data:
+            # Extract structured information
+            gap_match = re.search(r"gap:\s*(.+?)(?=\n|query:|entity_website:|$)", input_data)
+            query_match = re.search(r"query:\s*(.+?)(?=\n|gap:|entity_website:|$)", input_data)
+            website_match = re.search(r"entity_website:\s*(.+?)(?=\n|gap:|query:|$)", input_data)
+            
+            return {
+                "knowledge_gap": gap_match.group(1).strip() if gap_match else "",
+                "search_query": query_match.group(1).strip() if query_match else input_data.strip(),
+                "entity_website": website_match.group(1).strip() if website_match else None
+            }
+        else:
+            # Simple string - treat as search query
+            return {
+                "knowledge_gap": input_data.strip(),
+                "search_query": input_data.strip(),
+                "entity_website": None
+            }
+    
+    # Fallback for other types
+    return {
+        "knowledge_gap": str(input_data),
+        "search_query": str(input_data), 
+        "entity_website": None
+    }
+
+def extract_crawl_params(input_data: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
+    """Extract crawl parameters from AgentTask or other input formats"""
+    if isinstance(input_data, dict):
+        # Handle AgentTask dictionary or similar structured input
+        return {
+            "knowledge_gap": input_data.get("gap", input_data.get("knowledge_gap", "")),
+            "target_website": input_data.get("entity_website", input_data.get("target_website", input_data.get("url", ""))),
+            "search_query": input_data.get("query", input_data.get("search_query", None))
+        }
+    
+    if isinstance(input_data, str):
+        # Parse string input - look for structured patterns
+        if "gap:" in input_data or "entity_website:" in input_data:
+            # Extract structured information
+            gap_match = re.search(r"gap:\s*(.+?)(?=\n|query:|entity_website:|$)", input_data)
+            query_match = re.search(r"query:\s*(.+?)(?=\n|gap:|entity_website:|$)", input_data)
+            website_match = re.search(r"entity_website:\s*(.+?)(?=\n|gap:|query:|$)", input_data)
+            
+            return {
+                "knowledge_gap": gap_match.group(1).strip() if gap_match else "",
+                "target_website": website_match.group(1).strip() if website_match else input_data.strip(),
+                "search_query": query_match.group(1).strip() if query_match else None
+            }
+        else:
+            # Simple string - treat as target website
+            return {
+                "knowledge_gap": input_data.strip(),
+                "target_website": input_data.strip(),
+                "search_query": None
+            }
+    
+    # Fallback for other types  
+    return {
+        "knowledge_gap": str(input_data),
+        "target_website": str(input_data),
+        "search_query": None
+    }

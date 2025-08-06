@@ -135,6 +135,159 @@ def create_plan(
     # The actual implementation is handled by the LLM through Outlines
     pass
 
+# Tool agent output schemas for SearchAgent and CrawlAgent
+class EnhancedToolAgentOutput(BaseModel):
+    """Enhanced tool agent output with validation and metadata"""
+    
+    output: str = Field(
+        description="Comprehensive summary addressing the knowledge gap",
+        min_length=10,
+        max_length=2000
+    )
+    
+    sources: list[str] = Field(
+        default_factory=list,
+        description="Source URLs referenced in the summary",
+        max_length=20
+    )
+    
+    # Optional metadata for observability (HYBRID-02 integration)
+    processing_method: Optional[str] = Field(
+        default=None,
+        description="Method used: 'structured' or 'legacy'"
+    )
+    
+    confidence: Optional[float] = Field(
+        default=None,
+        description="Confidence score for the summary quality",
+        ge=0.0,
+        le=1.0
+    )
+    
+    processing_time_ms: Optional[int] = Field(
+        default=None,
+        description="Processing time in milliseconds",
+        ge=0
+    )
+
+# Backward compatibility alias for existing ToolAgentOutput consumers
+ToolAgentOutput = EnhancedToolAgentOutput
+
+# Structured summarization schemas
+class StructuredSummary(BaseModel):
+    """Structured summary output for hierarchical summarization"""
+    output: str = Field(
+        description="Comprehensive summary of the content", 
+        min_length=50, 
+        max_length=2000
+    )
+    key_findings: List[str] = Field(
+        description="List of key findings or important points", 
+        min_length=1, 
+        max_length=10
+    )
+    sources: List[str] = Field(
+        description="List of source URLs or references",
+        default_factory=list
+    )
+    confidence: float = Field(
+        description="Confidence score for the summary quality",
+        ge=0.0,
+        le=1.0,
+        default=0.9
+    )
+    processing_metadata: Dict[str, Any] = Field(
+        description="Processing metadata including timing and chunk information",
+        default_factory=dict
+    )
+
+    @field_validator('key_findings')
+    @classmethod
+    def validate_key_findings(cls, v):
+        """Ensure all key findings are meaningful"""
+        for finding in v:
+            if not finding or len(finding.strip()) < 10:
+                raise ValueError('Each key finding must be at least 10 characters long')
+        return v
+
+class ChunkSummaryItem(BaseModel):
+    """Individual chunk summary for debugging and observability"""
+    chunk_id: int = Field(description="Chunk identifier")
+    summary: Optional[str] = Field(
+        description="Summary of this chunk", 
+        min_length=10, 
+        max_length=500,
+        default=None
+    )
+    key_points: List[str] = Field(
+        description="Key points from this chunk",
+        default_factory=list,
+        max_length=5
+    )
+    token_count: int = Field(description="Token count for this chunk", ge=0)
+    processing_time_ms: Optional[int] = Field(
+        description="Processing time for this chunk in milliseconds", 
+        ge=0, 
+        default=None
+    )
+    error: Optional[str] = Field(description="Error message if processing failed", default=None)
+
+def summarise_search_results(
+    knowledge_gap: str,
+    search_query: str,
+    search_results: str,
+    entity_website: Optional[str] = None
+) -> EnhancedToolAgentOutput:
+    """
+    Summarise web search results to address a specific knowledge gap.
+    
+    This function is used by Outlines to generate structured search summaries.
+    
+    Args:
+        knowledge_gap: The specific knowledge gap being addressed
+        search_query: The search query that was executed
+        search_results: Raw search results from the web search tool
+        entity_website: Optional specific website context for the research
+        
+    Returns:
+        EnhancedToolAgentOutput with structured summary and source URLs
+        
+    Example:
+        For knowledge_gap="recent quantum computing breakthroughs" and search results,
+        returns structured output with comprehensive summary and source URLs
+    """
+    # This function signature is used by Outlines for structured generation
+    # The actual implementation is handled by the LLM through Outlines
+    pass
+
+def summarise_crawled_content(
+    knowledge_gap: str,
+    target_website: str,
+    crawled_content: str,
+    search_query: Optional[str] = None
+) -> EnhancedToolAgentOutput:
+    """
+    Summarise crawled website content to address a specific knowledge gap.
+    
+    This function is used by Outlines to generate structured crawl summaries.
+    
+    Args:
+        knowledge_gap: The specific knowledge gap being addressed
+        target_website: The website URL that was crawled
+        crawled_content: Raw content from the website crawling tool
+        search_query: Optional query context that led to this crawling
+        
+    Returns:
+        EnhancedToolAgentOutput with structured summary and source URLs
+        
+    Example:
+        For knowledge_gap="company financial performance" and crawled annual report,
+        returns structured output with key financial insights and source URL
+    """
+    # This function signature is used by Outlines for structured generation
+    # The actual implementation is handled by the LLM through Outlines
+    pass
+
 def analyze_knowledge_gaps(
     research_context: str,
     background_context: str = "",
