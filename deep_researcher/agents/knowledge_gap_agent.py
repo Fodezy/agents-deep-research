@@ -1,67 +1,109 @@
 """
-Agent used to evaluate the state of the research report (typically done in a loop) and identify knowledge gaps that still 
-need to be addressed.
+Enhanced Knowledge Gap Agent with Outlines integration and dual-path architecture.
 
-The Agent takes as input a string in the following format:
-===========================================================
-ORIGINAL QUERY: <original user query>
+This agent analyzes research progress and identifies remaining knowledge gaps using structured
+generation for reliable output. Follows HYBRID-07 architecture with:
 
-HISTORY OF ACTIONS, FINDINGS AND THOUGHTS: <breakdown of activities and findings carried out so far>
-===========================================================
+- Dual-path structured/legacy generation
+- Enhanced gap analysis with metadata (priority, confidence, research approaches)  
+- Template system with runtime date injection
+- Dedicated ModelRole.KNOWLEDGE_GAP integration
+- Backward compatibility with existing KnowledgeGapOutput interface
 
-The Agent then:
-1. Carefully reviews the current draft and assesses its completeness in answering the original query
-2. Identifies specific knowledge gaps that still exist and need to be filled
-3. Returns a KnowledgeGapOutput object
+Input formats supported:
+- Dictionary with structured parameters
+- ResearchRunner formatted strings 
+- Simple string queries (fallback)
+
+Output: Enhanced KnowledgeGapResult with comprehensive gap analysis and metadata
 """
 
-from pydantic import BaseModel, Field
-from typing import List
+from typing import Union, Dict, Any
 from .baseclass import ResearchAgent
 from ..llm_config import LLMConfig, model_supports_structured_output
-from datetime import datetime
 from .utils.parse_output import create_type_parser
 
-class KnowledgeGapOutput(BaseModel):
-    """Output from the Knowledge Gap Agent"""
-    research_complete: bool = Field(description="Whether the research and findings are complete enough to end the research loop")
-    outstanding_gaps: List[str] = Field(description="List of knowledge gaps that still need to be addressed")
-
-
-# We've removed the 'f' from the front and the date variable
-INSTRUCTIONS = f"""
-You are the Knowledge-Gap Agent. Today's date is {datetime.now():%Y-%m-%d}.
-
-You will receive:
-- ORIGINAL QUERY: <the user's question>
-- HISTORY OF ACTIONS, FINDINGS AND THOUGHTS: <what's been done so far>
-
-Your task:
-1. Decide whether the research is complete.
-2. If complete, output `"research_complete": true` and an empty list of gaps.
-3. If not complete, output `"research_complete": false` and list up to three concise, actionable knowledge gaps.
-
-You MUST respond with only valid JSON matching exactly this schema - no extra keys, no commentary, no markdown fences:
-
-{{
-  "research_complete": false,
-  "outstanding_gaps": [
-    "A single, concise knowledge gap that must be addressed next.",
-    "Another specific gap (if applicable)."
-  ]
-}}
-"""
-
+# Import enhanced schemas with backward compatibility
+from .utils.outlines_schemas import KnowledgeGapResult, KnowledgeGapOutput, analyze_knowledge_gaps
+from .utils.outlines_templates import (
+    render_knowledge_gap_prompt, 
+    render_legacy_knowledge_gap_prompt,
+    extract_knowledge_gap_params
+)
 
 
 def init_knowledge_gap_agent(config: LLMConfig) -> ResearchAgent:
+    """Initialize KnowledgeGapAgent with dual-path Outlines integration following HYBRID-07 architecture"""
     from .utils.model_role_registry import ModelRole
-    selected_model = config.get_model_for_role(ModelRole.PLANNER)
-
-    return ResearchAgent(
-        name="KnowledgeGapAgent",
-        instructions=INSTRUCTIONS,
-        model=selected_model,
-        output_type=KnowledgeGapOutput if model_supports_structured_output(selected_model) else None,
-        output_parser=create_type_parser(KnowledgeGapOutput) if not model_supports_structured_output(selected_model) else None
-    )
+    
+    # CRITICAL: Use dedicated KNOWLEDGE_GAP role (not PLANNER)
+    selected_model = config.get_model_for_role(ModelRole.KNOWLEDGE_GAP)
+    
+    # Check Outlines availability and model support for structured generation
+    outlines_available = False
+    generator = None
+    
+    try:
+        import outlines
+        if model_supports_structured_output(selected_model):
+            # Create JSON schema and generator for structured output
+            schema = outlines.json_schema(KnowledgeGapResult)
+            generator = outlines.Generator(selected_model, schema)
+            outlines_available = True
+            print(f"[INFO] KnowledgeGapAgent: Using Outlines structured generation with {selected_model}")
+        else:
+            print(f"[INFO] KnowledgeGapAgent: Model {selected_model} doesn't support structured output, using legacy parsing")
+            outlines_available = False
+    except (ImportError, Exception) as e:
+        print(f"[WARNING] KnowledgeGapAgent: Outlines not available ({e}), falling back to legacy parsing")
+        outlines_available = False
+        generator = None
+    
+    if outlines_available and generator:
+        # Structured path with Outlines integration
+        def structured_generator(input_data: Union[str, Dict[str, Any]]) -> KnowledgeGapResult:
+            """Generate structured gap analysis using Outlines"""
+            try:
+                # Extract parameters using template system
+                params = extract_knowledge_gap_params(input_data)
+                
+                # Render structured prompt with runtime content population
+                prompt = render_knowledge_gap_prompt(**params)
+                
+                # Generate structured output using Outlines
+                result = generator(prompt)
+                
+                return result
+            except Exception as e:
+                print(f"[ERROR] KnowledgeGapAgent structured generation failed: {e}")
+                # Fallback to legacy path on error
+                raise e
+        
+        return ResearchAgent(
+            name="KnowledgeGapAgent", 
+            instructions="",  # Template handles instructions
+            model=selected_model,
+            output_type=KnowledgeGapResult,
+            structured_generator=structured_generator
+        )
+    else:
+        # Legacy path with dynamic instructions and enhanced parsing
+        def dynamic_instructions(input_data: Union[str, Dict[str, Any]]) -> str:
+            """Generate dynamic instructions for legacy parsing using template system"""
+            try:
+                # Extract parameters and render legacy prompt
+                params = extract_knowledge_gap_params(input_data)
+                return render_legacy_knowledge_gap_prompt(**params)
+            except Exception as e:
+                print(f"[ERROR] KnowledgeGapAgent template rendering failed: {e}")
+                # Ultimate fallback to basic prompt
+                research_context = str(input_data) if isinstance(input_data, str) else input_data.get("research_context", "research query")
+                return render_legacy_knowledge_gap_prompt(research_context)
+        
+        return ResearchAgent(
+            name="KnowledgeGapAgent",
+            instructions=dynamic_instructions,  # Function for dynamic instruction generation
+            model=selected_model,
+            output_type=None,  # Legacy parsing path
+            output_parser=create_type_parser(KnowledgeGapResult)  # Enhanced parser
+        )

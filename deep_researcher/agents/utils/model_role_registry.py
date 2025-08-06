@@ -23,11 +23,12 @@ logger = logging.getLogger(__name__)
 
 
 class ModelRole(Enum):
-    """Defines the 4 model roles in the architecture."""
+    """Defines the 5 model roles in the architecture."""
     PLANNER = "planner"
     TOOL_CALLING = "tool_calling" 
     SUMMARISER = "summariser"
     WRITER = "writer"
+    KNOWLEDGE_GAP = "knowledge_gap"
 
 
 @dataclass
@@ -100,6 +101,15 @@ class ModelRoleRegistry:
                 min_context_length=4096,
                 supports_function_calling=False,
                 description="Generates final research reports and documentation"
+            ),
+            
+            ModelRole.KNOWLEDGE_GAP: RoleSpecification(
+                role=ModelRole.KNOWLEDGE_GAP,
+                required_capabilities={'text-generation', 'reasoning', 'analysis'},
+                preferred_tags={'reasoning', 'analysis', 'instruction-following', 'evaluation'},
+                min_context_length=8192,  # Needs longer context for research history analysis
+                supports_function_calling=False,
+                description="Analyzes research progress and identifies knowledge gaps"
             )
         }
     
@@ -252,12 +262,17 @@ class ModelRoleRegistry:
             model_info.validated_roles.add(ModelRole.TOOL_CALLING)
         
         # Reasoning/planning models
-        if any(x in model_id_lower for x in ['hermes', 'qwen', 'llama']):
+        if any(x in model_id_lower for x in ['hermes', 'qwen', 'llama', 'phi3']):
             model_info.tags.update(['text-generation', 'reasoning', 'instruction-following'])
             model_info.validated_roles.update([ModelRole.PLANNER, ModelRole.WRITER])
         
+        # Analysis-capable models (for KNOWLEDGE_GAP role)
+        if any(x in model_id_lower for x in ['hermes', 'qwen', 'llama', 'phi3']):
+            model_info.tags.update(['analysis', 'evaluation', 'critical-thinking'])
+            model_info.validated_roles.add(ModelRole.KNOWLEDGE_GAP)
+        
         # Summarization-capable models
-        if any(x in model_id_lower for x in ['qwen', 'llama', 'hermes']):
+        if any(x in model_id_lower for x in ['qwen', 'llama', 'hermes', 'phi3']):
             model_info.tags.add('summarization')
             model_info.validated_roles.add(ModelRole.SUMMARISER)
     
@@ -291,8 +306,32 @@ class ModelRoleRegistry:
         
         return len(issues) == 0, issues
     
+    async def validate_5_model_config(self, config_dict: Dict[str, str]) -> Dict[ModelRole, tuple[bool, List[str]]]:
+        """Validate a complete 5-model configuration."""
+        expected_roles = {
+            'PLANNER_MODEL': ModelRole.PLANNER,
+            'TOOL_CALLING_MODEL': ModelRole.TOOL_CALLING,
+            'SUMMARISER_MODEL': ModelRole.SUMMARISER,
+            'WRITER_MODEL': ModelRole.WRITER,
+            'KNOWLEDGE_GAP_MODEL': ModelRole.KNOWLEDGE_GAP
+        }
+        
+        results = {}
+        
+        for config_key, role in expected_roles.items():
+            model_id = config_dict.get(config_key)
+            if not model_id:
+                results[role] = (False, [f"Missing configuration: {config_key}"])
+                continue
+            
+            provider = config_dict.get(f"{config_key}_PROVIDER", "local")
+            model_info = await self.get_model_info(model_id, provider)
+            results[role] = self.validate_model_for_role(model_info, role)
+        
+        return results
+    
     async def validate_4_model_config(self, config_dict: Dict[str, str]) -> Dict[ModelRole, tuple[bool, List[str]]]:
-        """Validate a complete 4-model configuration."""
+        """Validate a complete 4-model configuration (legacy compatibility)."""
         expected_roles = {
             'PLANNER_MODEL': ModelRole.PLANNER,
             'TOOL_CALLING_MODEL': ModelRole.TOOL_CALLING,

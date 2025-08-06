@@ -291,13 +291,15 @@ FAST_MODEL = get_env_with_prefix("FAST_MODEL", "gpt-4o-mini")
 TOOL_CALLING_MODEL_PROVIDER = get_env_with_prefix("TOOL_CALLING_MODEL_PROVIDER", "local")
 TOOL_CALLING_MODEL = get_env_with_prefix("TOOL_CALLING_MODEL", "hf.co/tensorblock/Salesforce_Llama-xLAM-2-8b-fc-r-GGUF:Q4_K_M")
 
-# New naming convention (with backward compatibility)
+# 5-Model Architecture (with backward compatibility)
 PLANNER_MODEL_PROVIDER = get_env_with_prefix("PLANNER_MODEL_PROVIDER", REASONING_MODEL_PROVIDER)
 PLANNER_MODEL = get_env_with_prefix("PLANNER_MODEL", REASONING_MODEL)
 SUMMARISER_MODEL_PROVIDER = get_env_with_prefix("SUMMARISER_MODEL_PROVIDER", MAIN_MODEL_PROVIDER)
 SUMMARISER_MODEL = get_env_with_prefix("SUMMARISER_MODEL", MAIN_MODEL)
 WRITER_MODEL_PROVIDER = get_env_with_prefix("WRITER_MODEL_PROVIDER", FAST_MODEL_PROVIDER)
 WRITER_MODEL = get_env_with_prefix("WRITER_MODEL", FAST_MODEL)
+KNOWLEDGE_GAP_MODEL_PROVIDER = get_env_with_prefix("KNOWLEDGE_GAP_MODEL_PROVIDER", PLANNER_MODEL_PROVIDER)
+KNOWLEDGE_GAP_MODEL = get_env_with_prefix("KNOWLEDGE_GAP_MODEL", PLANNER_MODEL)
 
 SEARCH_PROVIDER = get_env_with_prefix("SEARCH_PROVIDER", "serper")
 SEARXNG_HOST    = get_env_with_prefix("SEARXNG_HOST")
@@ -404,6 +406,8 @@ class LLMConfig:
         summariser_model: str = None,
         writer_model_provider: str = None,
         writer_model: str = None,
+        knowledge_gap_model_provider: str = None,
+        knowledge_gap_model: str = None,
         # Validation options
         validate_model_roles: bool = True,
         strict_validation: bool = False,
@@ -448,9 +452,13 @@ class LLMConfig:
         if writer_model_provider is None:
             writer_model_provider = WRITER_MODEL_PROVIDER or "local"
             writer_model = WRITER_MODEL or "llama3.2:latest"
+            
+        if knowledge_gap_model_provider is None:
+            knowledge_gap_model_provider = KNOWLEDGE_GAP_MODEL_PROVIDER or planner_model_provider
+            knowledge_gap_model = KNOWLEDGE_GAP_MODEL or planner_model
         
         # Validate all providers
-        for provider in [planner_model_provider, tool_calling_model_provider, summariser_model_provider, writer_model_provider]:
+        for provider in [planner_model_provider, tool_calling_model_provider, summariser_model_provider, writer_model_provider, knowledge_gap_model_provider]:
             if provider not in supported_providers:
                 raise ValueError(f"Invalid model provider: {provider}")
         
@@ -475,6 +483,11 @@ class LLMConfig:
                 'provider': writer_model_provider,
                 'model': writer_model,
                 'role': ModelRole.WRITER if ROLE_VALIDATION_AVAILABLE else None
+            },
+            'knowledge_gap': {
+                'provider': knowledge_gap_model_provider,
+                'model': knowledge_gap_model,
+                'role': ModelRole.KNOWLEDGE_GAP if ROLE_VALIDATION_AVAILABLE else None
             }
         }
         
@@ -564,11 +577,12 @@ class LLMConfig:
             
             return m["model"](model=model_name, openai_client=client)
 
-        # Create models for 4-model architecture
+        # Create models for 5-model architecture
         self.planner_model = _init_model(planner_model_provider, planner_model)
         self.tool_calling_model = _init_model(tool_calling_model_provider, tool_calling_model)
         self.summariser_model = _init_model(summariser_model_provider, summariser_model)
         self.writer_model = _init_model(writer_model_provider, writer_model)
+        self.knowledge_gap_model = _init_model(knowledge_gap_model_provider, knowledge_gap_model)
         
         # Maintain backward compatibility
         self.reasoning_model = self.planner_model
@@ -660,12 +674,15 @@ class LLMConfig:
                 return self.main_model
             elif role.value == 'writer':
                 return self.fast_model
+            elif role.value == 'knowledge_gap':
+                return self.reasoning_model  # Use reasoning model for gap analysis
         
         role_to_model = {
             ModelRole.PLANNER: self.planner_model,
             ModelRole.TOOL_CALLING: self.tool_calling_model,
             ModelRole.SUMMARISER: self.summariser_model,
-            ModelRole.WRITER: self.writer_model
+            ModelRole.WRITER: self.writer_model,
+            ModelRole.KNOWLEDGE_GAP: self.knowledge_gap_model
         }
         
         return role_to_model.get(role, self.main_model)
@@ -752,10 +769,10 @@ class LLMConfig:
 
 
 def create_default_config() -> LLMConfig:
-    """Create LLMConfig using environment variables with 4-model architecture."""
+    """Create LLMConfig using environment variables with 5-model architecture."""
     return LLMConfig(
         search_provider=SEARCH_PROVIDER,
-        # New 4-model architecture (with backward compatibility)
+        # 5-model architecture (HYBRID-07)
         planner_model_provider=PLANNER_MODEL_PROVIDER,
         planner_model=PLANNER_MODEL,
         tool_calling_model_provider=TOOL_CALLING_MODEL_PROVIDER,
@@ -764,6 +781,8 @@ def create_default_config() -> LLMConfig:
         summariser_model=SUMMARISER_MODEL,
         writer_model_provider=WRITER_MODEL_PROVIDER,
         writer_model=WRITER_MODEL,
+        knowledge_gap_model_provider=KNOWLEDGE_GAP_MODEL_PROVIDER,
+        knowledge_gap_model=KNOWLEDGE_GAP_MODEL,
         # Validation enabled by default in non-strict mode
         validate_model_roles=True,
         strict_validation=False,

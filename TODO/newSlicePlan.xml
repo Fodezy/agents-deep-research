@@ -12,7 +12,8 @@
     <Context>
         <ProjectOverviewFiles="User should @mention there project overview file">
             @README.md 
-            @TODO\HYBRID-05-Plan.md  -- this is the previous slice plan that this new slice builds upon.
+            @TODO\SL5\HYBRID-05-Plan.md  -- this is the previous slice plan that this new slice builds upon.
+            @TODO\SL6\HYBRID-06-Plan.md  -- this is the previous slice plan that this new slice builds upon.
         </ProjectOverviewFiles>
         <BusinessGoal>
             Reduce failed tool executions and malformed outputs by formalizing a 4-model architecture with enforced roles and schema validation, thereby increasing researcher productivity and trust in the pipeline while decreasing time spent on debugging and rework. Key metrics: structural-validity rate ≥98%, zero OutputParserError incidents, and measurable uptime/reliability improvements for downstream research tasks.
@@ -32,7 +33,7 @@
     </InputFile>
 
     <OutputFilePath="User should @mention the file containing feature brief, user stories, or requirements document.">
-        @TODO\HYBRID-06-Plan.md 
+        @TODO\SL7\HYBRID-07-Plan.md 
     </OutputFilePath>
     
     <OutputStructure>

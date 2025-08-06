@@ -22,13 +22,27 @@ PROVIDERS_TO_TEST = {
 
 SEARCH_PROVIDER = 'serper'
 
-# Note that the models need to support tool use
+# Local models configuration for testing (compatible with HYBRID-07 5-model architecture)
+# REASONING_MODEL: Complex reasoning and planning tasks
+REASONING_MODEL_PROVIDER = 'local'
+REASONING_MODEL = 'phi3:14b-medium-4k-instruct-q4_K_M'
 
-REASONING_MODEL_PROVIDER = 'openai'
-REASONING_MODEL = 'gpt-4o-mini'
+# MAIN_MODEL: General purpose tasks, writing, analysis  
+MAIN_MODEL_PROVIDER = 'local'
+MAIN_MODEL = 'qwen3:14b'
 
-MAIN_MODEL_PROVIDER = 'openai'
-MAIN_MODEL = 'gpt-4o-mini'
+# FAST_MODEL: Quick tasks, summarization
+FAST_MODEL_PROVIDER = 'local'
+FAST_MODEL = 'hermes3:8b'
 
-FAST_MODEL_PROVIDER = 'openai'
-FAST_MODEL = 'gpt-4o-mini'
+# TOOL_CALLING_MODEL: Specialized for function calling (critical for pipeline)
+TOOL_CALLING_MODEL_PROVIDER = 'local'
+TOOL_CALLING_MODEL = 'hf.co/tensorblock/Salesforce_Llama-xLAM-2-8b-fc-r-GGUF:Q4_K_M'
+
+# Legacy OpenAI configuration (uncomment to use instead of local models)
+# REASONING_MODEL_PROVIDER = 'openai'
+# REASONING_MODEL = 'gpt-4o-mini'
+# MAIN_MODEL_PROVIDER = 'openai'
+# MAIN_MODEL = 'gpt-4o-mini'
+# FAST_MODEL_PROVIDER = 'openai'
+# FAST_MODEL = 'gpt-4o-mini'

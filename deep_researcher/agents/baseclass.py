@@ -81,6 +81,8 @@ class ResearchAgent(Agent[TContext]):
             return ModelRole.TOOL_CALLING
         elif any(keyword in agent_name for keyword in ['plan', 'strategy']):
             return ModelRole.PLANNER
+        elif any(keyword in agent_name for keyword in ['knowledge', 'gap', 'knowledgegap']):
+            return ModelRole.KNOWLEDGE_GAP
         elif any(keyword in agent_name for keyword in ['summar', 'extract']):
             return ModelRole.SUMMARISER
         elif any(keyword in agent_name for keyword in ['writ', 'report', 'document']):

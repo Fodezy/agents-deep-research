@@ -13,62 +13,78 @@ The Agent then outputs a ReportPlan object, which includes:
 """
 
 from pydantic import BaseModel, Field
-from typing import List
+from typing import List, Dict, Any, Union
 from .baseclass import ResearchAgent
-from ..llm_config import LLMConfig, model_supports_structured_output
+from ..llm_config import LLMConfig
+from .. import llm_config  # Module-qualified for proper mocking
 from .utils.parse_output import create_type_parser
-from datetime import datetime
+from .utils.outlines_schemas import PlanningResult, ResearchStep
+from .utils.outlines_templates import render_planning_prompt, render_legacy_planning_prompt, extract_planner_params
 
 
-class ReportPlanSection(BaseModel):
-    """A section of the report that needs to be written"""
+# Backward compatibility aliases for existing code
+ReportPlan = PlanningResult
+ReportPlanSection = ResearchStep
+
+# Keep original class definitions for reference (deprecated)
+class _DeprecatedReportPlanSection(BaseModel):
+    """A section of the report that needs to be written (DEPRECATED - use ResearchStep)"""
     title: str = Field(description="The title of the section")
     key_question: str = Field(description="The key question to be addressed in the section")
 
-
-class ReportPlan(BaseModel):
-    """Output from the Report Planner Agent"""
+class _DeprecatedReportPlan(BaseModel):
+    """Output from the Report Planner Agent (DEPRECATED - use PlanningResult)"""
     background_context: str = Field(description="A summary of supporting context that can be passed onto the research agents")
-    report_outline: List[ReportPlanSection] = Field(description="List of sections that need to be written in the report")
+    report_outline: List[_DeprecatedReportPlanSection] = Field(description="List of sections that need to be written in the report")
     report_title: str = Field(description="The title of the report")
 
-INSTRUCTIONS = f"""
-You are the Report Planner for a research project. Today's date is {datetime.now():%Y-%m-%d}.
-
-You will receive:
-- QUERY: <the user's research question>
-
-Your task:
-1. Provide a concise report title.
-2. Summarize any initial background context in 1-2 paragraphs.
-3. Outline the report as a list of sections, each with a title and a key question.
-
-You MUST respond with only valid JSON matching exactly this schema - no extra keys, no markdown fences, no commentary:
-
-{{
-  "report_title": "A concise, descriptive title for the report",
-  "background_context": "1-2 paragraphs of background context.",
-  "report_outline": [
-    {{
-      "title": "Section 1 Title",
-      "key_question": "The specific question this section answers"
-    }},
-    {{
-      "title": "Section 2 Title",
-      "key_question": "Another section question"
-    }}
-  ]
-}}
-"""
-
 def init_planner_agent(config: LLMConfig) -> ResearchAgent:
+    """Initialize PlannerAgent with dual-path Outlines integration"""
     from .utils.model_role_registry import ModelRole
+    
     selected_model = config.get_model_for_role(ModelRole.PLANNER)
-
-    return ResearchAgent(
-        name="PlannerAgent",
-        instructions=INSTRUCTIONS,
-        model=selected_model,
-        output_type=ReportPlan if model_supports_structured_output(selected_model) else None,
-        output_parser=create_type_parser(ReportPlan) if not model_supports_structured_output(selected_model) else None
-    )
+    
+    # Check Outlines availability and model support
+    outlines_available = False
+    generator = None
+    
+    try:
+        import outlines
+        if llm_config.model_supports_structured_output(selected_model):
+            # Create JSON schema and generator for structured output
+            schema = outlines.json_schema(PlanningResult)
+            generator = outlines.Generator(selected_model, schema)
+            outlines_available = True
+    except (ImportError, Exception) as e:
+        print(f"[WARNING] Outlines not available ({e}), falling back to legacy parsing")
+        outlines_available = False
+        generator = None
+    
+    if outlines_available:
+        # Structured path with Outlines integration
+        def structured_generator(input_data: Union[str, Dict[str, Any]]) -> PlanningResult:
+            """Generate structured planning output using Outlines"""
+            params = extract_planner_params(input_data)
+            prompt = render_planning_prompt(**params)
+            return generator(prompt)
+        
+        return ResearchAgent(
+            name="PlannerAgent",
+            instructions="",  # Template handles instructions
+            model=selected_model,
+            output_type=PlanningResult,
+            structured_generator=structured_generator
+        )
+    else:
+        # Legacy path with dynamic instructions and parsing
+        def dynamic_instructions(input_data: Union[str, Dict[str, Any]]) -> str:
+            """Generate dynamic instructions for legacy parsing"""
+            params = extract_planner_params(input_data)
+            return render_legacy_planning_prompt(**params)
+        
+        return ResearchAgent(
+            name="PlannerAgent",
+            instructions=dynamic_instructions,  # Function for dynamic instructions
+            model=selected_model,
+            output_parser=create_type_parser(PlanningResult)
+        )
