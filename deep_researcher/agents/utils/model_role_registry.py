@@ -157,6 +157,7 @@ class ModelRoleRegistry:
             'hermes3:8b': 'NousResearch/Hermes-3-Llama-3.1-8B',
             'qwen2.5-coder:latest': 'Qwen/Qwen2.5-Coder-7B-Instruct',
             'llama3.2:latest': 'meta-llama/Llama-3.2-3B-Instruct',
+            'qwen3:14b': 'Qwen/Qwen2.5-14B-Instruct',  # Map qwen3:14b to Qwen2.5-14B-Instruct
         }
         
         return known_mappings.get(model_id)
@@ -255,26 +256,47 @@ class ModelRoleRegistry:
         """Apply known characteristics for specific models."""
         model_id_lower = model_info.model_id.lower()
         
-        # Tool calling models (validated to work)
-        if 'xlam' in model_id_lower or 'salesforce_llama-xlam' in model_id_lower:
+        # --- TOOL CALLING MODELS ---
+        tool_calling_indicators = [
+            'xlam', 
+            'hermes-pro', # Simple name for Hermes
+            'phi3-medium'   # Simple name for Phi3
+        ]
+        if any(indicator in model_id_lower for indicator in tool_calling_indicators):
             model_info.supports_function_calling = True
             model_info.tags.update(['function-calling', 'tool-use', 'agents'])
             model_info.validated_roles.add(ModelRole.TOOL_CALLING)
         
-        # Reasoning/planning models
-        if any(x in model_id_lower for x in ['hermes', 'qwen', 'llama', 'phi3']):
+        # --- REASONING/PLANNING MODELS ---
+        reasoning_indicators = [
+            'phi3-medium', # Simple name for Phi3
+            'hermes-pro',
+            'qwen3',  # Qwen3 models are excellent for reasoning and writing
+            'phi3-planner:14b-q4'
+        ]
+        if any(indicator in model_id_lower for indicator in reasoning_indicators):
             model_info.tags.update(['text-generation', 'reasoning', 'instruction-following'])
             model_info.validated_roles.update([ModelRole.PLANNER, ModelRole.WRITER])
-        
-        # Analysis-capable models (for KNOWLEDGE_GAP role)
-        if any(x in model_id_lower for x in ['hermes', 'qwen', 'llama', 'phi3']):
-            model_info.tags.update(['analysis', 'evaluation', 'critical-thinking'])
+
+        # --- ANALYSIS MODELS (KNOWLEDGE GAP) ---
+        analysis_indicators = [
+            'phi3-medium', # Simple name for Phi3
+            'hermes-pro',
+            'qwen3'  # Qwen3 models are also good for analysis
+        ]
+        if any(indicator in model_id_lower for indicator in analysis_indicators):
+            model_info.tags.update(['reasoning', 'analysis', 'evaluation'])
             model_info.validated_roles.add(ModelRole.KNOWLEDGE_GAP)
         
-        # Summarization-capable models
-        if any(x in model_id_lower for x in ['qwen', 'llama', 'hermes', 'phi3']):
+        # --- SUMMARIZATION MODELS ---
+        summarization_indicators = [
+            'phi3-medium', # Simple name for Phi3
+            'hermes-pro'
+        ]
+        if any(indicator in model_id_lower for indicator in summarization_indicators):
             model_info.tags.add('summarization')
             model_info.validated_roles.add(ModelRole.SUMMARISER)
+
     
     def validate_model_for_role(self, model_info: ModelInfo, role: ModelRole) -> tuple[bool, List[str]]:
         """Validate if a model can handle a specific role."""
@@ -301,9 +323,12 @@ class ModelRoleRegistry:
                 issues.append("CRITICAL: Tool calling models must support function calling to prevent pipeline failures")
             
             # Check for validated models
-            if 'xlam' not in model_info.model_id.lower():
-                issues.append("WARNING: Model not validated for tool calling. Consider using Salesforce_Llama-xLAM-2-8b-fc-r-GGUF")
-        
+            # AFTER THE EDIT
+            # Check for validated models
+            tool_calling_indicators = ['xlam', 'hermes', 'phi3']
+            if not any(indicator in model_info.model_id.lower() for indicator in tool_calling_indicators):
+                issues.append("WARNING: Model not explicitly validated for tool calling. Known good models contain 'xlam', 'hermes', or 'phi3'.")
+                    
         return len(issues) == 0, issues
     
     async def validate_5_model_config(self, config_dict: Dict[str, str]) -> Dict[ModelRole, tuple[bool, List[str]]]:

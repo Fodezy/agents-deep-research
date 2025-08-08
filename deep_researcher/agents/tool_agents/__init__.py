@@ -1,8 +1,9 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, Dict
 
 class ToolAgentOutput(BaseModel):
     """Standard output for all tool agents"""
+    model_config = ConfigDict(extra='forbid')
     output: str
     sources: list[str] = Field(default_factory=list)
 
@@ -14,7 +15,7 @@ from ..utils.validated_agent import ValidatedAgent
 from ..utils.validation_config import ValidationConfig, get_validation_config_manager
 
 def init_tool_agents(config: LLMConfig, 
-                    enable_validation: bool = True,
+                    enable_validation: bool = False,  # PHASE 3: Disabled by default (native structured generation)
                     validation_configs: Optional[Dict[str, ValidationConfig]] = None) -> dict[str, ResearchAgent]:
     """
     Initialize tool agents with optional ValidationWrapper integration.

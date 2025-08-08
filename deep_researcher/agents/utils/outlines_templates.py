@@ -409,6 +409,115 @@ Analyze the crawled content and provide:
 
 Extract key findings, facts, and insights from the website content. Synthesize information effectively while maintaining accuracy."""
 
+
+def render_structured_summary_prompt(
+    content: str,
+    context: str,
+    sources: List[str] = None,
+    max_findings: int = 8
+) -> str:
+    """Render structured summarization prompt for Outlines generation"""
+    sources_text = ""
+    if sources:
+        sources_text = f"\n\nSources: {', '.join(sources)}"
+    
+    return f"""Create a comprehensive structured summary of the following content.
+
+Context: {context}
+
+Content to summarize:
+{content}{sources_text}
+
+Provide a structured summary that includes:
+1. A comprehensive summary (50-2000 characters)
+2. Key findings (1-{max_findings} important points, each at least 10 characters)
+3. Confidence score (0.0-1.0 based on content quality and completeness)
+
+Focus on:
+- Extracting the most important information relevant to the context
+- Identifying key findings that directly address the research needs
+- Providing accurate confidence assessment based on source quality
+- Maintaining factual accuracy and avoiding speculation
+
+Return the structured summary with all required fields."""
+
+
+def render_structured_chunk_summary_prompt(
+    chunk_content: str,
+    chunk_id: int,
+    context: str,
+    max_key_points: int = 5
+) -> str:
+    """Render structured chunk summarization prompt"""
+    return f"""Summarize this content chunk with structured output.
+
+Chunk ID: {chunk_id}
+Context: {context}
+
+Chunk Content:
+{chunk_content}
+
+Provide a structured summary that includes:
+1. A concise summary (10-500 characters) of the main points in this chunk
+2. Key points (up to {max_key_points} specific points from this chunk)
+
+Focus on:
+- Extracting the most relevant information from this specific chunk
+- Identifying concrete facts, findings, or insights
+- Keeping summaries focused and avoiding redundancy
+- Providing specific rather than generic key points
+
+Return the structured chunk summary with all required fields."""
+
+
+def render_structured_aggregation_prompt(
+    chunk_summaries: List[Dict[str, Any]],
+    context: str,
+    sources: List[str] = None,
+    max_findings: int = 10
+) -> str:
+    """Render structured aggregation prompt for final summary"""
+    # Build chunk summaries text
+    summaries_text = []
+    all_key_points = []
+    
+    for cs in chunk_summaries:
+        if cs.get('summary'):
+            summaries_text.append(f"Chunk {cs['chunk_id']}: {cs['summary']}")
+        if cs.get('key_points'):
+            all_key_points.extend(cs['key_points'])
+    
+    sources_text = ""
+    if sources:
+        sources_text = f"\n\nSources: {', '.join(sources)}"
+    
+    key_points_text = ""
+    if all_key_points:
+        unique_points = list(set(all_key_points))[:20]  # Limit and deduplicate
+        key_points_text = f"\n\nAll Key Points from Chunks:\n" + "\n".join([f"- {point}" for point in unique_points])
+    
+    return f"""Create a comprehensive structured summary by combining these chunk summaries.
+
+Context: {context}
+
+Chunk Summaries:
+{chr(10).join(summaries_text)}{key_points_text}{sources_text}
+
+Synthesize this information into a structured summary that includes:
+1. A comprehensive summary (50-2000 characters) that combines and synthesizes all chunks
+2. Refined key findings (1-{max_findings} most important findings across all chunks)
+3. Confidence score (0.0-1.0) based on consistency and completeness of source material
+
+Focus on:
+- Synthesizing information across chunks rather than just concatenating
+- Identifying the most important findings that span multiple chunks
+- Resolving any conflicts or redundancies between chunks
+- Providing a coherent narrative that addresses the research context
+- Assessing confidence based on source consistency and completeness
+
+Return the structured summary with all required fields."""
+
+
 def render_legacy_crawl_summary_prompt(
     knowledge_gap: str,
     target_website: str,
@@ -453,6 +562,20 @@ def extract_search_params(input_data: Union[str, Dict[str, Any]]) -> Dict[str, A
         }
     
     if isinstance(input_data, str):
+        # Try to parse as JSON first (from task.model_dump_json())
+        import json
+        try:
+            parsed_data = json.loads(input_data)
+            if isinstance(parsed_data, dict):
+                return {
+                    "knowledge_gap": parsed_data.get("gap", parsed_data.get("knowledge_gap", "")),
+                    "search_query": parsed_data.get("query", parsed_data.get("search_query", "")),
+                    "entity_website": parsed_data.get("entity_website", parsed_data.get("website", None))
+                }
+        except (json.JSONDecodeError, TypeError):
+            # Not JSON, continue with string parsing
+            pass
+        
         # Parse string input - could be simple query or structured format
         # Look for AgentTask-like patterns first
         if "gap:" in input_data or "query:" in input_data:

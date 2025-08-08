@@ -181,8 +181,19 @@ class IterativeResearcher:
                 # 3. Select agents to address knowledge gap
                 selection_plan: AgentSelectionPlan = await self._select_agents(next_gap, query, background_context=background_context)
 
+                # DEBUG: Log what tasks were selected
+                self._log_message(f"[DEBUG] ToolSelector created {len(selection_plan.tasks)} tasks:")
+                for i, task in enumerate(selection_plan.tasks):
+                    self._log_message(f"[DEBUG]   Task {i+1}: {task.agent} - {task.query}")
+
                 # 4. Run the selected agents to gather information
                 results: Dict[str, ToolAgentOutput] = await self._execute_tools(selection_plan.tasks)
+                
+                # DEBUG: Log what results were obtained
+                self._log_message(f"[DEBUG] Tool execution completed with {len(results)} results:")
+                for key, result in results.items():
+                    output_preview = result.output[:100] + "..." if len(result.output) > 100 else result.output
+                    self._log_message(f"[DEBUG]   {key}: {output_preview}")
             else:
                 self.should_continue = False
                 self._log_message("=== IterativeResearcher Marked As Complete - Finalizing Output ===")
@@ -234,14 +245,23 @@ class IterativeResearcher:
         {self.conversation.compile_conversation_history() or "No previous actions, findings or thoughts available."}        
         """
 
-        result = await ResearchRunner.run(
-            self.knowledge_gap_agent,
-            input_str,
-        )
-        
-        evaluation = result.final_output_as(KnowledgeGapOutput)
+        # Use native structured generation instead of legacy ResearchRunner
+        evaluation = await self.knowledge_gap_agent.run_native_analysis(input_str)
 
+        # DEBUG: Log the evaluation result to understand what's happening
+        self._log_message(f"[DEBUG] KnowledgeGapAgent evaluation:")
+        self._log_message(f"[DEBUG]   research_complete: {evaluation.research_complete}")
+        self._log_message(f"[DEBUG]   gaps_identified: {len(evaluation.gaps_identified)} gaps")
+        self._log_message(f"[DEBUG]   outstanding_gaps: {evaluation.outstanding_gaps}")
+        
         if not evaluation.research_complete:
+            # CRITICAL FIX: Defensive programming for empty gaps list
+            if not evaluation.outstanding_gaps:
+                # Handle empty gaps gracefully - treat as research complete
+                print("[WARNING] No gaps identified despite research_complete=False. Treating as complete.")
+                evaluation.research_complete = True
+                return evaluation
+            
             next_gap = evaluation.outstanding_gaps[0]
             self.conversation.set_latest_gap(next_gap)
             self._log_message(self.conversation.latest_task_string())
@@ -271,12 +291,8 @@ class IterativeResearcher:
         {self.conversation.compile_conversation_history() or "No previous actions, findings or thoughts available."}
         """
         
-        result = await ResearchRunner.run(
-            self.tool_selector_agent,
-            input_str,
-        )
-        
-        selection_plan = result.final_output_as(AgentSelectionPlan)
+        # Use native structured generation instead of legacy ResearchRunner
+        selection_plan = await self.tool_selector_agent.run_native_tool_selection(input_str)
 
         # Add the tool calls to the conversation
         self.conversation.set_latest_tool_calls([
@@ -318,21 +334,32 @@ class IterativeResearcher:
             agent_name = task.agent
             agent = self.tool_agents.get(agent_name)
             if agent:
-                result = await ResearchRunner.run(
-                    agent,
-                    task.model_dump_json(),
-                )
-                # Extract ToolAgentOutput from RunResult
+                # Use native structured generation for tool agents
                 try:
-                    output = result.final_output_as(ToolAgentOutput)
+                    if hasattr(agent, 'run_implementation'):
+                        # This is a native structured generation agent
+                        output_dict = await agent.run_implementation(task.model_dump_json())
+                        # Convert from EnhancedToolAgentOutput to basic ToolAgentOutput (extract only basic fields)
+                        basic_fields = {
+                            'output': output_dict.get('output', ''),
+                            'sources': output_dict.get('sources', [])
+                        }
+                        output = ToolAgentOutput(**basic_fields)
+                    else:
+                        # Fallback to legacy approach for non-native agents
+                        result = await ResearchRunner.run(
+                            agent,
+                            task.model_dump_json(),
+                        )
+                        output = result.final_output_as(ToolAgentOutput)
                 except Exception as parse_error:
                     # If parsing fails, provide detailed error info for debugging
-                    raw_output = str(result.final_output)
+                    raw_output = str(parse_error)
                     if len(raw_output) > 200:
                         raw_output = raw_output[:200] + "..."
                     
                     error_output = ToolAgentOutput(
-                        output=f"Agent returned invalid output format. This usually means the local model generated tool call JSON instead of executing the tool and returning results. Raw output: {raw_output}",
+                        output=f"Agent execution failed: {raw_output}",
                         sources=[]
                     )
                     return task.gap, agent_name, error_output

@@ -59,11 +59,9 @@ class DeepResearcher:
 
         self._log_message("=== Building Report Plan ===")
         user_message = f"QUERY: {query}"
-        result = await ResearchRunner.run(
-            self.planner_agent,
-            user_message
-        )
-        report_plan = result.final_output_as(ReportPlan)
+        
+        # Use native structured generation instead of legacy ResearchRunner
+        report_plan = await self.planner_agent.run_native_planning(user_message)
 
         if self.verbose:
             num_sections = len(report_plan.report_outline)

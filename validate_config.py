@@ -32,7 +32,7 @@ def update_env_file(env_file_path: str = ".env"):
         'PLANNER_MODEL_PROVIDER': existing_vars.get('PLANNER_MODEL_PROVIDER') or existing_vars.get('REASONING_MODEL_PROVIDER', 'local'),
         'PLANNER_MODEL': existing_vars.get('PLANNER_MODEL') or existing_vars.get('REASONING_MODEL', 'hermes3:8b'),
         'TOOL_CALLING_MODEL_PROVIDER': existing_vars.get('TOOL_CALLING_MODEL_PROVIDER', 'local'),
-        'TOOL_CALLING_MODEL': existing_vars.get('TOOL_CALLING_MODEL', 'hf.co/tensorblock/Salesforce_Llama-xLAM-2-8b-fc-r-GGUF:Q4_K_M'),
+        'TOOL_CALLING_MODEL': existing_vars.get('TOOL_CALLING_MODEL', 'hf.co/NousResearch/Hermes-2-Pro-Llama-3-8B-GGUF:Q8_0'),
         'SUMMARISER_MODEL_PROVIDER': existing_vars.get('SUMMARISER_MODEL_PROVIDER') or existing_vars.get('MAIN_MODEL_PROVIDER', 'local'),
         'SUMMARISER_MODEL': existing_vars.get('SUMMARISER_MODEL') or existing_vars.get('MAIN_MODEL', 'qwen2.5-coder:latest'),
         'WRITER_MODEL_PROVIDER': existing_vars.get('WRITER_MODEL_PROVIDER') or existing_vars.get('FAST_MODEL_PROVIDER', 'local'),

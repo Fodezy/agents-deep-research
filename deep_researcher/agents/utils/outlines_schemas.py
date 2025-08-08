@@ -1,24 +1,36 @@
 """Outlines function schemas for structured agent output"""
 from typing import List, Optional, Literal, Dict, Any
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 
 class AgentTask(BaseModel):
+    model_config = ConfigDict(extra='forbid')
     gap: Optional[str] = Field(description="The knowledge gap being addressed", default=None)
     agent: str = Field(description="The name of the agent to use")
     query: str = Field(description="The specific query for the agent")
     entity_website: Optional[str] = Field(description="The website of the entity being researched, if known", default=None)
 
 class AgentSelectionPlan(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    schema_version: int = Field(description="Schema version for compatibility", default=1)
     tasks: List[AgentTask] = Field(description="List of agent tasks to address knowledge gaps")
+    
+    @field_validator('schema_version')
+    @classmethod
+    def validate_schema_version(cls, v):
+        if v != 1:
+            raise ValueError('schema_version must be 1')
+        return v
 
 # Planning schemas for PlannerAgent
 class ResearchStep(BaseModel):
     """A research step in the planning process (matches ValidationWrapper expectations)"""
+    model_config = ConfigDict(extra='forbid')
     title: str = Field(description="Title of the section", min_length=5, max_length=80)
     key_question: str = Field(description="Key question to address", min_length=10, max_length=200)
 
 class PlanningResult(BaseModel):
     """Output from the Planner Agent (matches ValidationWrapper ReportPlan schema exactly)"""
+    model_config = ConfigDict(extra='forbid')
     schema_version: int = Field(description="Schema version for compatibility", default=1)
     report_title: str = Field(description="The title of the report", min_length=10, max_length=100)
     background_context: str = Field(description="A summary of supporting context", min_length=50, max_length=1000)
@@ -38,6 +50,7 @@ class PlanningResult(BaseModel):
 # Knowledge gap analysis schemas for KnowledgeGapAgent
 class KnowledgeGap(BaseModel):
     """Individual knowledge gap with metadata"""
+    model_config = ConfigDict(extra='forbid')
     gap_id: str = Field(description="Unique gap identifier", min_length=3, max_length=50)
     description: str = Field(description="Gap description", min_length=10, max_length=500)
     priority: Literal["high", "medium", "low"] = Field(description="Gap priority for research")
@@ -55,6 +68,7 @@ class KnowledgeGap(BaseModel):
 
 class KnowledgeGapResult(BaseModel):
     """Enhanced gap analysis output with metadata"""
+    model_config = ConfigDict(extra='forbid')
     schema_version: int = Field(description="Schema version", default=1)
     research_complete: bool = Field(description="Whether research is complete")
     research_completeness_confidence: float = Field(description="Confidence in completeness assessment", ge=0.0, le=1.0, default=1.0)
@@ -62,7 +76,7 @@ class KnowledgeGapResult(BaseModel):
     gaps_identified: List[KnowledgeGap] = Field(description="Identified knowledge gaps", min_length=0, max_length=10)
     analysis_summary: str = Field(description="Gap analysis summary", min_length=50, max_length=2000)
     total_gaps: int = Field(description="Total number of gaps identified", ge=0)
-    iteration_context: Optional[Dict[str, Any]] = Field(description="Iteration metadata", default=None)
+    iteration_context: Optional[Dict[str, str]] = Field(description="Iteration metadata", default=None)
 
     @field_validator('total_gaps')
     @classmethod
@@ -138,6 +152,7 @@ def create_plan(
 # Tool agent output schemas for SearchAgent and CrawlAgent
 class EnhancedToolAgentOutput(BaseModel):
     """Enhanced tool agent output with validation and metadata"""
+    model_config = ConfigDict(extra='forbid')
     
     output: str = Field(
         description="Comprehensive summary addressing the knowledge gap",
@@ -176,6 +191,7 @@ ToolAgentOutput = EnhancedToolAgentOutput
 # Structured summarization schemas
 class StructuredSummary(BaseModel):
     """Structured summary output for hierarchical summarization"""
+    model_config = ConfigDict(extra='forbid')
     output: str = Field(
         description="Comprehensive summary of the content", 
         min_length=50, 
@@ -196,7 +212,7 @@ class StructuredSummary(BaseModel):
         le=1.0,
         default=0.9
     )
-    processing_metadata: Dict[str, Any] = Field(
+    processing_metadata: Dict[str, str] = Field(
         description="Processing metadata including timing and chunk information",
         default_factory=dict
     )
@@ -212,6 +228,7 @@ class StructuredSummary(BaseModel):
 
 class ChunkSummaryItem(BaseModel):
     """Individual chunk summary for debugging and observability"""
+    model_config = ConfigDict(extra='forbid')
     chunk_id: int = Field(description="Chunk identifier")
     summary: Optional[str] = Field(
         description="Summary of this chunk", 
@@ -231,6 +248,59 @@ class ChunkSummaryItem(BaseModel):
         default=None
     )
     error: Optional[str] = Field(description="Error message if processing failed", default=None)
+
+
+def summarise_content_structured(
+    content: str,
+    context: str,
+    sources: List[str] = None
+) -> StructuredSummary:
+    """
+    Create a structured summary of content with key findings and metadata.
+    
+    This function is used by Outlines to generate structured summaries with
+    consistent schema validation and rich metadata.
+    
+    Args:
+        content: The content to summarize
+        context: Context or purpose for the summarization
+        sources: Optional list of source URLs or references
+        
+    Returns:
+        StructuredSummary with output, key_findings, sources, and metadata
+        
+    Example:
+        For research content about quantum computing, returns structured
+        summary with key findings and confidence scoring.
+    """
+    # This function signature is used by Outlines for structured generation
+    # The actual implementation is handled by the LLM through Outlines
+    pass
+
+
+def summarise_chunk_structured(
+    chunk_content: str,
+    chunk_id: int,
+    context: str
+) -> ChunkSummaryItem:
+    """
+    Create a structured summary of a content chunk.
+    
+    This function is used by Outlines for structured chunk summarization
+    in hierarchical processing workflows.
+    
+    Args:
+        chunk_content: The chunk content to summarize
+        chunk_id: Identifier for the chunk
+        context: Context for summarization
+        
+    Returns:
+        ChunkSummaryItem with summary and key points
+    """
+    # This function signature is used by Outlines for structured generation
+    # The actual implementation is handled by the LLM through Outlines
+    pass
+
 
 def summarise_search_results(
     knowledge_gap: str,
@@ -292,7 +362,7 @@ def analyze_knowledge_gaps(
     research_context: str,
     background_context: str = "",
     findings_history: str = "",
-    iteration_context: Optional[Dict[str, Any]] = None
+    iteration_context: Optional[Dict[str, str]] = None
 ) -> KnowledgeGapResult:
     """
     Analyze research progress and identify remaining knowledge gaps that need to be addressed.

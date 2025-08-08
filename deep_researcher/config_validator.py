@@ -258,7 +258,7 @@ class ConfigurationValidator:
             
             # Special validation for tool calling model (critical for pipeline)
             if role_name == 'tool_calling' and model:
-                if not any(recommended in model.lower() for recommended in ['xlam', 'phi-3', 'function']):
+                if not any(recommended in model.lower() for recommended in ['xlam', 'phi-3', 'function', 'phi3']):
                     self.issues.append(ValidationIssue(
                         ValidationSeverity.WARNING,
                         config.model_var,
